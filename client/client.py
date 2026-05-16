@@ -895,7 +895,7 @@ class FrpLoginApp:
     def _create_tunnel_dialog(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(self._tr("create_tunnel_title"))
-        dialog.geometry("420+300+300")
+        dialog.geometry("400x300")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
