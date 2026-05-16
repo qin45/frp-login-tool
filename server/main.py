@@ -55,8 +55,14 @@ session_lock = threading.Lock()
 def load_config():
     if not CONFIG_FILE.exists():
         return {"configured": False}
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return {"configured": False}
+            return json.loads(content)
+    except (json.JSONDecodeError, IOError):
+        return {"configured": False}
 
 
 def save_config(cfg):
