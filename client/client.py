@@ -2,6 +2,7 @@
 """
 FRP Login Tool - Client
 GUI desktop client for managing FRP tunnels with remote server.
+Supports Chinese and English languages.
 """
 import json
 import signal
@@ -25,6 +26,206 @@ CONFIG_FILE = BASE_DIR / "client_config.json"
 
 frpc_process = None
 frpc_process_lock = threading.Lock()
+
+# ============================================================
+# Language Support
+# ============================================================
+LANG_ZH = "zh"
+LANG_EN = "en"
+
+LANGUAGES = {
+    LANG_ZH: {
+        # General
+        "lang_name": "中文",
+        "lang_toggle": "English",
+        "frp_title": "FRP 登录工具",
+        "error": "错误",
+        "success": "成功",
+        "info": "提示",
+        "warning": "警告",
+        "confirm": "确认",
+        "ok": "确定",
+        "cancel": "取消",
+        "create": "创建",
+        # Server connection
+        "server_connection": "服务器连接",
+        "server_url": "服务器地址:",
+        "connect": "连接",
+        "connected_to": "已连接到",
+        "server_connected": "服务器已连接，请登录或注册。",
+        "enter_server_url": "请输入服务器地址",
+        "testing_connection": "正在测试连接...",
+        "connection_failed": "连接失败:",
+        "server_responded": "服务器响应",
+        # Login / Register
+        "login": "登录",
+        "register": "注册",
+        "email": "邮箱:",
+        "password": "密码:",
+        "confirm_password": "确认密码:",
+        "code": "验证码:",
+        "send_code": "发送验证码",
+        "register_btn": "注册",
+        "login_btn": "登录",
+        "connect_hint": "连接到服务器开始",
+        "code_sent": "验证码已发送到您的邮箱",
+        "all_fields_required": "所有字段为必填项",
+        "passwords_not_match": "两次密码输入不一致",
+        "password_too_short": "密码长度不能少于6位",
+        "login_failed": "登录失败",
+        "registration_failed": "注册失败",
+        # Account info
+        "account_info": "账户信息",
+        "user": "用户:",
+        "email_label": "邮箱:",
+        "expiration": "到期时间:",
+        "expired": "已到期",
+        "expired_status": "已到期 - 无法启用隧道",
+        "active": "活跃",
+        "active_status": "正常",
+        # Tunnels
+        "tunnels": "隧道 (最多10条)",
+        "tunnel_id": "ID",
+        "tunnel_name": "名称",
+        "tunnel_type": "类型",
+        "tunnel_local": "本地",
+        "tunnel_remote": "远程端口",
+        "tunnel_status": "状态",
+        "tunnel_enabled": "已启用",
+        "tunnel_disabled": "已禁用",
+        "create_tunnel": "创建隧道",
+        "enable": "启用",
+        "disable": "禁用",
+        "delete": "删除",
+        "frpc_idle": "frpc: 空闲",
+        "frpc_running": "frpc: 运行中",
+        "logout": "退出登录",
+        "refresh": "刷新",
+        "select_tunnel": "请选择一条隧道",
+        "tunnel_already_enabled": "隧道已启用",
+        "tunnel_not_enabled": "隧道未启用",
+        "account_expired": "账户已到期",
+        "disable_before_delete": "请先禁用隧道再删除",
+        "confirm_delete": "确定要删除隧道",
+        "delete_success": "删除成功",
+        "delete_failed": "删除失败",
+        "enable_failed": "启用失败",
+        "disable_failed": "禁用失败",
+        # Create tunnel dialog
+        "create_tunnel_title": "创建隧道",
+        "name_label": "名称:",
+        "type_label": "类型:",
+        "local_ip_label": "本地 IP:",
+        "local_port_label": "本地端口:",
+        "name_port_required": "名称和端口为必填项",
+        "port_must_be_number": "端口必须为数字",
+        # Enable info dialog
+        "tunnel_enabled_title": "隧道已启用",
+        "tunnel_enabled_msg": "隧道已启用成功",
+        "frpc_started_msg": "frpc.ini 已更新，frpc.exe 已启动。",
+        # frpc
+        "frpc_not_found": "未找到 frpc.exe",
+        "frpc_ini_not_found": "未找到 frpc.ini",
+        "frpc_started": "frpc 已启动",
+        "frpc_stopped": "frpc 已停止",
+        "frpc_force_killed": "frpc 已强制结束",
+        "frpc_not_running": "frpc 未运行",
+        "start_frpc_failed": "启动 frpc 失败",
+        # Tunnel disable
+        "tunnel_disabled": "隧道已禁用",
+    },
+    LANG_EN: {
+        "lang_name": "English",
+        "lang_toggle": "中文",
+        "frp_title": "FRP Login Tool",
+        "error": "Error",
+        "success": "Success",
+        "info": "Info",
+        "warning": "Warning",
+        "confirm": "Confirm",
+        "ok": "OK",
+        "cancel": "Cancel",
+        "create": "Create",
+        "server_connection": "Server Connection",
+        "server_url": "Server URL:",
+        "connect": "Connect",
+        "connected_to": "Connected to",
+        "server_connected": "Server connected. Login or register.",
+        "enter_server_url": "Please enter a server URL",
+        "testing_connection": "Testing connection...",
+        "connection_failed": "Connection failed:",
+        "server_responded": "Server responded",
+        "login": "Login",
+        "register": "Register",
+        "email": "Email:",
+        "password": "Password:",
+        "confirm_password": "Confirm:",
+        "code": "Code:",
+        "send_code": "Send Code",
+        "register_btn": "Register",
+        "login_btn": "Login",
+        "connect_hint": "Connect to a server to begin",
+        "code_sent": "Verification code sent to your email",
+        "all_fields_required": "All fields required",
+        "passwords_not_match": "Passwords do not match",
+        "password_too_short": "Password must be at least 6 characters",
+        "login_failed": "Login failed",
+        "registration_failed": "Registration failed",
+        "account_info": "Account Info",
+        "user": "User:",
+        "email_label": "Email:",
+        "expiration": "Expiration:",
+        "expired": "Expired",
+        "expired_status": "Expired - tunnels cannot be enabled",
+        "active": "Active",
+        "active_status": "Active",
+        "tunnels": "Tunnels (max 10)",
+        "tunnel_id": "ID",
+        "tunnel_name": "Name",
+        "tunnel_type": "Type",
+        "tunnel_local": "Local",
+        "tunnel_remote": "Remote Port",
+        "tunnel_status": "Status",
+        "tunnel_enabled": "Enabled",
+        "tunnel_disabled": "Disabled",
+        "create_tunnel": "Create Tunnel",
+        "enable": "Enable",
+        "disable": "Disable",
+        "delete": "Delete",
+        "frpc_idle": "frpc: idle",
+        "frpc_running": "frpc: RUNNING",
+        "logout": "Logout",
+        "refresh": "Refresh",
+        "select_tunnel": "Please select a tunnel",
+        "tunnel_already_enabled": "Tunnel already enabled",
+        "tunnel_not_enabled": "Tunnel is not enabled",
+        "account_expired": "Account has expired",
+        "disable_before_delete": "Disable the tunnel before deleting",
+        "confirm_delete": "Delete tunnel",
+        "delete_success": "Tunnel deleted",
+        "delete_failed": "Failed to delete",
+        "enable_failed": "Failed to enable",
+        "disable_failed": "Failed to disable",
+        "create_tunnel_title": "Create Tunnel",
+        "name_label": "Name:",
+        "type_label": "Type:",
+        "local_ip_label": "Local IP:",
+        "local_port_label": "Local Port:",
+        "name_port_required": "Name and port required",
+        "port_must_be_number": "Port must be a number",
+        "tunnel_enabled_title": "Tunnel Enabled",
+        "tunnel_enabled_msg": "Tunnel Enabled Successfully",
+        "frpc_started_msg": "frpc.ini has been updated and frpc.exe started.",
+        "frpc_not_found": "frpc.exe not found",
+        "frpc_ini_not_found": "frpc.ini not found",
+        "frpc_started": "frpc started",
+        "frpc_stopped": "frpc stopped",
+        "frpc_force_killed": "frpc force killed",
+        "frpc_not_running": "frpc not running",
+        "start_frpc_failed": "Failed to start frpc",
+        "tunnel_disabled": "Tunnel disabled",
+    },
+}
 
 
 # ============================================================
@@ -125,7 +326,8 @@ class ApiClient:
 # ============================================================
 # frpc Manager
 # ============================================================
-def write_frpc_ini(server_addr, server_port, user, token, tunnel_name, tunnel_type, local_port, remote_port, local_ip="127.0.0.1"):
+def write_frpc_ini(server_addr, server_port, user, token, tunnel_name,
+                   tunnel_type, local_port, remote_port, local_ip="127.0.0.1"):
     content = f"""[common]
 server_addr = {server_addr}
 server_port = {server_port}
@@ -205,25 +407,34 @@ def is_frpc_running():
 # Tunnel Enable Info Dialog
 # ============================================================
 class TunnelEnableDialog(tk.Toplevel):
-    def __init__(self, parent, tunnel, enable_data):
+    def __init__(self, parent, tunnel, enable_data, tr_func):
         super().__init__(parent)
-        self.title("Tunnel Enabled")
+        self.tr = tr_func
+        self.title(self.tr("tunnel_enabled_title"))
         self.geometry("500x400")
         self.resizable(True, True)
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frame, text="Tunnel Enabled Successfully", font=("", 14, "bold")).pack(pady=5)
-        info = f"""
-Tunnel: {tunnel['name']}
-Type: {tunnel['tunnel_type']}
-Local: {tunnel.get('local_ip', '127.0.0.1')}:{tunnel['local_port']}
-Remote Port: {enable_data['remote_port']}
-FRP Server: {enable_data['ftps_ip']}:{enable_data['ftps_port']}
-Token: {enable_data['token'][:20]}...
-"""
+
+        ttk.Label(frame, text=self.tr("tunnel_enabled_msg"),
+                  font=("", 14, "bold")).pack(pady=5)
+
+        info = (
+            f"Tunnel: {tunnel.get('name', '')}\n"
+            f"Type: {tunnel.get('tunnel_type', '')}\n"
+            f"Local: {tunnel.get('local_ip', '127.0.0.1')}:{tunnel.get('local_port', '')}\n"
+            f"Remote Port: {enable_data.get('remote_port', '')}\n"
+            f"FRP Server: {enable_data.get('ftps_ip', '')}:{enable_data.get('ftps_port', '')}\n"
+            f"Token: {enable_data.get('token', '')[:20]}..."
+        )
         ttk.Label(frame, text=info, justify=tk.LEFT).pack(pady=10)
-        ttk.Label(frame, text="frpc.ini has been updated and frpc.exe started.", foreground="green").pack()
-        ttk.Button(frame, text="OK", command=self.destroy).pack(pady=10)
+
+        status_label = ttk.Label(
+            frame, text=self.tr("frpc_started_msg"), foreground="green"
+        )
+        status_label.pack(pady=5)
+
+        ttk.Button(frame, text=self.tr("ok"), command=self.destroy).pack(pady=10)
 
 
 # ============================================================
@@ -232,8 +443,10 @@ Token: {enable_data['token'][:20]}...
 class FrpLoginApp:
     def __init__(self):
         self.api = ApiClient()
+        cfg = load_client_config()
+        self.lang = cfg.get("lang", LANG_ZH)
         self.root = tk.Tk()
-        self.root.title("FRP Login Tool")
+        self.root.title(self._tr("frp_title"))
         self.root.geometry("900x650")
         self.root.minsize(700, 500)
         self.current_user_id = None
@@ -255,6 +468,23 @@ class FrpLoginApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _tr(self, key):
+        """Translate a key to the current language."""
+        return LANGUAGES.get(self.lang, LANGUAGES[LANG_ZH]).get(key, key)
+
+    def _toggle_lang(self):
+        """Switch between Chinese and English, then rebuild the UI."""
+        self.lang = LANG_EN if self.lang == LANG_ZH else LANG_ZH
+        cfg = load_client_config()
+        cfg["lang"] = self.lang
+        save_client_config(cfg)
+        self.root.title(self._tr("frp_title"))
+        # Rebuild current screen
+        if self.login_frame is not None and self.login_frame.winfo_exists():
+            self._show_login()
+        elif self.main_frame is not None and self.main_frame.winfo_exists():
+            self._show_main()
+
     def _clear_container(self):
         for w in self.container.winfo_children():
             w.destroy()
@@ -274,15 +504,34 @@ class FrpLoginApp:
         self.login_frame = ttk.Frame(self.container, padding=30)
         self.login_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Top bar: language toggle
+        top_bar = ttk.Frame(self.login_frame)
+        top_bar.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(top_bar, text=self._tr("frp_title"),
+                  font=("", 16, "bold")).pack(side=tk.LEFT)
+        lang_btn_text = LANGUAGES.get(LANG_EN if self.lang == LANG_ZH else LANG_ZH,
+                                      {}).get("lang_name", "")
+        ttk.Button(top_bar, text=lang_btn_text,
+                   command=self._toggle_lang).pack(side=tk.RIGHT)
+
         # Server URL
-        server_frame = ttk.LabelFrame(self.login_frame, text="Server Connection", padding=15)
+        server_frame = ttk.LabelFrame(
+            self.login_frame, text=self._tr("server_connection"), padding=15
+        )
         server_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(server_frame, text="Server URL:").grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Label(server_frame, text=self._tr("server_url")).grid(
+            row=0, column=0, sticky=tk.W, padx=5
+        )
         self.server_url_var = tk.StringVar(value=self.api.base_url or "https://")
-        ttk.Entry(server_frame, textvariable=self.server_url_var, width=40).grid(row=0, column=1, padx=5)
-        ttk.Button(server_frame, text="Connect", command=self._check_server).grid(row=0, column=2, padx=5)
+        ttk.Entry(server_frame, textvariable=self.server_url_var, width=40).grid(
+            row=0, column=1, padx=5
+        )
+        ttk.Button(server_frame, text=self._tr("connect"),
+                   command=self._check_server).grid(row=0, column=2, padx=5)
         self.server_status_var = tk.StringVar(value="")
-        ttk.Label(server_frame, textvariable=self.server_status_var, foreground="gray").grid(row=1, column=0, columnspan=3, sticky=tk.W, padx=5)
+        ttk.Label(server_frame, textvariable=self.server_status_var,
+                  foreground="gray").grid(row=1, column=0, columnspan=3,
+                                          sticky=tk.W, padx=5)
 
         # Login/Register Notebook
         notebook = ttk.Notebook(self.login_frame)
@@ -290,38 +539,63 @@ class FrpLoginApp:
 
         # Login tab
         login_tab = ttk.Frame(notebook, padding=20)
-        notebook.add(login_tab, text="Login")
-        ttk.Label(login_tab, text="Email:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        notebook.add(login_tab, text=self._tr("login"))
+        ttk.Label(login_tab, text=self._tr("email")).grid(
+            row=0, column=0, sticky=tk.W, pady=5
+        )
         self.login_email_var = tk.StringVar()
-        ttk.Entry(login_tab, textvariable=self.login_email_var, width=35).grid(row=0, column=1, pady=5)
-        ttk.Label(login_tab, text="Password:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(login_tab, textvariable=self.login_email_var, width=35).grid(
+            row=0, column=1, pady=5
+        )
+        ttk.Label(login_tab, text=self._tr("password")).grid(
+            row=1, column=0, sticky=tk.W, pady=5
+        )
         self.login_pass_var = tk.StringVar()
-        ttk.Entry(login_tab, textvariable=self.login_pass_var, show="*", width=35).grid(row=1, column=1, pady=5)
-        ttk.Button(login_tab, text="Login", command=self._login).grid(row=2, column=1, pady=15, sticky=tk.E)
+        ttk.Entry(login_tab, textvariable=self.login_pass_var, show="*",
+                  width=35).grid(row=1, column=1, pady=5)
+        ttk.Button(login_tab, text=self._tr("login_btn"),
+                   command=self._login).grid(row=2, column=1, pady=15, sticky=tk.E)
 
         # Register tab
         reg_tab = ttk.Frame(notebook, padding=20)
-        notebook.add(reg_tab, text="Register")
-        ttk.Label(reg_tab, text="Email:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        notebook.add(reg_tab, text=self._tr("register"))
+        ttk.Label(reg_tab, text=self._tr("email")).grid(
+            row=0, column=0, sticky=tk.W, pady=5
+        )
         self.reg_email_var = tk.StringVar()
-        ttk.Entry(reg_tab, textvariable=self.reg_email_var, width=35).grid(row=0, column=1, pady=5)
-        ttk.Label(reg_tab, text="Password:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(reg_tab, textvariable=self.reg_email_var, width=35).grid(
+            row=0, column=1, pady=5
+        )
+        ttk.Label(reg_tab, text=self._tr("password")).grid(
+            row=1, column=0, sticky=tk.W, pady=5
+        )
         self.reg_pass_var = tk.StringVar()
-        ttk.Entry(reg_tab, textvariable=self.reg_pass_var, show="*", width=35).grid(row=1, column=1, pady=5)
-        ttk.Label(reg_tab, text="Confirm:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(reg_tab, textvariable=self.reg_pass_var, show="*",
+                  width=35).grid(row=1, column=1, pady=5)
+        ttk.Label(reg_tab, text=self._tr("confirm_password")).grid(
+            row=2, column=0, sticky=tk.W, pady=5
+        )
         self.reg_confirm_var = tk.StringVar()
-        ttk.Entry(reg_tab, textvariable=self.reg_confirm_var, show="*", width=35).grid(row=2, column=1, pady=5)
-        ttk.Label(reg_tab, text="Code:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(reg_tab, textvariable=self.reg_confirm_var, show="*",
+                  width=35).grid(row=2, column=1, pady=5)
+        ttk.Label(reg_tab, text=self._tr("code")).grid(
+            row=3, column=0, sticky=tk.W, pady=5
+        )
         self.reg_code_var = tk.StringVar()
-        ttk.Entry(reg_tab, textvariable=self.reg_code_var, width=20).grid(row=3, column=1, sticky=tk.W, pady=5)
+        ttk.Entry(reg_tab, textvariable=self.reg_code_var, width=20).grid(
+            row=3, column=1, sticky=tk.W, pady=5
+        )
         btn_frame = ttk.Frame(reg_tab)
         btn_frame.grid(row=4, column=1, pady=10, sticky=tk.E)
-        ttk.Button(btn_frame, text="Send Code", command=self._send_code).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Register", command=self._register).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("send_code"),
+                   command=self._send_code).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("register_btn"),
+                   command=self._register).pack(side=tk.LEFT, padx=5)
 
         # Status bar
-        self.status_var = tk.StringVar(value="Connect to a server to begin")
-        ttk.Label(self.login_frame, textvariable=self.status_var, foreground="gray").pack(pady=5)
+        self.status_var = tk.StringVar(value=self._tr("connect_hint"))
+        ttk.Label(self.login_frame, textvariable=self.status_var,
+                  foreground="gray").pack(pady=5)
 
         # Try auto-login
         if self.api.session_token and self.api.base_url:
@@ -330,22 +604,26 @@ class FrpLoginApp:
     def _check_server(self):
         url = self.server_url_var.get().strip()
         if not url:
-            self.server_status_var.set("Please enter a server URL")
+            self.server_status_var.set(self._tr("enter_server_url"))
             return
         self.api.set_server(url)
-        self.server_status_var.set("Testing connection...")
+        self.server_status_var.set(self._tr("testing_connection"))
         self.root.update()
 
         def test():
             try:
                 resp = self.api._get("/api/user/info")
                 if resp.status_code in (200, 401):
-                    self.server_status_var.set(f"Connected to {url}")
-                    self.root.after(0, lambda: self.status_var.set("Server connected. Login or register."))
+                    tr_connected = self._tr("connected_to")
+                    tr_connected_msg = self._tr("server_connected")
+                    self.server_status_var.set(f"{tr_connected} {url}")
+                    self.root.after(0, lambda: self.status_var.set(tr_connected_msg))
                 else:
-                    self.server_status_var.set(f"Server responded ({resp.status_code})")
+                    tr_resp = self._tr("server_responded")
+                    self.server_status_var.set(f"{tr_resp} ({resp.status_code})")
             except requests.RequestException as e:
-                self.server_status_var.set(f"Connection failed: {e}")
+                tr_fail = self._tr("connection_failed")
+                self.server_status_var.set(f"{tr_fail} {e}")
 
         threading.Thread(target=test, daemon=True).start()
 
@@ -365,23 +643,39 @@ class FrpLoginApp:
         except requests.RequestException:
             self.api.logout()
 
+    def _show_error(self, title_key, message):
+        """Show error messagebox with translated title."""
+        messagebox.showerror(self._tr(title_key), message)
+
+    def _show_info(self, title_key, message):
+        messagebox.showinfo(self._tr(title_key), message)
+
+    def _show_warning(self, title_key, message):
+        messagebox.showwarning(self._tr(title_key), message)
+
+    def _show_yesno(self, title_key, message):
+        return messagebox.askyesno(self._tr(title_key), message)
+
     def _send_code(self):
         email = self.reg_email_var.get().strip()
         if not email:
-            messagebox.showerror("Error", "Please enter email")
+            self._show_error("error", self._tr("all_fields_required"))
             return
-        threading.Thread(target=self._send_code_thread, args=(email,), daemon=True).start()
+        threading.Thread(target=self._send_code_thread,
+                         args=(email,), daemon=True).start()
 
     def _send_code_thread(self, email):
         try:
             resp = self.api.register_send_code(email)
             if resp.status_code == 200:
-                self.root.after(0, lambda: messagebox.showinfo("Success", "Verification code sent to your email"))
+                self.root.after(
+                    0, lambda: self._show_info("success", self._tr("code_sent"))
+                )
             else:
-                err = resp.json().get("error", "Unknown error")
-                self.root.after(0, lambda: messagebox.showerror("Error", err))
+                err = resp.json().get("error", self._tr("error"))
+                self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: messagebox.showerror("Connection Error", str(e)))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
 
     def _register(self):
         email = self.reg_email_var.get().strip()
@@ -389,15 +683,16 @@ class FrpLoginApp:
         confirm = self.reg_confirm_var.get()
         code = self.reg_code_var.get().strip()
         if not email or not password or not code:
-            messagebox.showerror("Error", "All fields required")
+            self._show_error("error", self._tr("all_fields_required"))
             return
         if password != confirm:
-            messagebox.showerror("Error", "Passwords do not match")
+            self._show_error("error", self._tr("passwords_not_match"))
             return
         if len(password) < 6:
-            messagebox.showerror("Error", "Password must be at least 6 characters")
+            self._show_error("error", self._tr("password_too_short"))
             return
-        threading.Thread(target=self._register_thread, args=(email, password, code), daemon=True).start()
+        threading.Thread(target=self._register_thread,
+                         args=(email, password, code), daemon=True).start()
 
     def _register_thread(self, email, password, code):
         try:
@@ -407,18 +702,19 @@ class FrpLoginApp:
                 self.current_user_id = data["user_id"]
                 self.root.after(0, self._show_main)
             else:
-                err = resp.json().get("error", "Registration failed")
-                self.root.after(0, lambda: messagebox.showerror("Error", err))
+                err = resp.json().get("error", self._tr("registration_failed"))
+                self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: messagebox.showerror("Connection Error", str(e)))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
 
     def _login(self):
         email = self.login_email_var.get().strip()
         password = self.login_pass_var.get()
         if not email or not password:
-            messagebox.showerror("Error", "Email and password required")
+            self._show_error("error", self._tr("all_fields_required"))
             return
-        threading.Thread(target=self._login_thread, args=(email, password), daemon=True).start()
+        threading.Thread(target=self._login_thread,
+                         args=(email, password), daemon=True).start()
 
     def _login_thread(self, email, password):
         try:
@@ -428,10 +724,10 @@ class FrpLoginApp:
                 self.current_user_id = data["user_id"]
                 self.root.after(0, self._show_main)
             else:
-                err = resp.json().get("error", "Login failed")
-                self.root.after(0, lambda: messagebox.showerror("Error", err))
+                err = resp.json().get("error", self._tr("login_failed"))
+                self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: messagebox.showerror("Connection Error", str(e)))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
 
     # ============================
     # Main Dashboard
@@ -441,36 +737,53 @@ class FrpLoginApp:
         self.main_frame = ttk.Frame(self.container, padding=15)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Header
+        # Header with lang toggle
         header = ttk.Frame(self.main_frame)
         header.pack(fill=tk.X, pady=5)
-        ttk.Label(header, text=f"FRP Login Tool", font=("", 18, "bold")).pack(side=tk.LEFT)
-        ttk.Button(header, text="Logout", command=self._logout).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(header, text="Refresh", command=self._refresh_data).pack(side=tk.RIGHT, padx=5)
+        ttk.Label(header, text=self._tr("frp_title"),
+                  font=("", 18, "bold")).pack(side=tk.LEFT)
+        lang_btn_text = LANGUAGES.get(LANG_EN if self.lang == LANG_ZH else LANG_ZH,
+                                      {}).get("lang_name", "")
+        ttk.Button(header, text=lang_btn_text,
+                   command=self._toggle_lang).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(header, text=self._tr("logout"),
+                   command=self._logout).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(header, text=self._tr("refresh"),
+                   command=self._refresh_data).pack(side=tk.RIGHT, padx=5)
 
         # User info bar
-        info_frame = ttk.LabelFrame(self.main_frame, text="Account Info", padding=10)
+        info_frame = ttk.LabelFrame(
+            self.main_frame, text=self._tr("account_info"), padding=10
+        )
         info_frame.pack(fill=tk.X, pady=5)
         self.user_id_var = tk.StringVar()
         self.expiry_var = tk.StringVar()
         self.expiry_status_var = tk.StringVar()
-        ttk.Label(info_frame, textvariable=self.user_id_var, font=("", 11)).pack(anchor=tk.W)
+        ttk.Label(info_frame, textvariable=self.user_id_var,
+                  font=("", 11)).pack(anchor=tk.W)
         ttk.Label(info_frame, textvariable=self.expiry_var).pack(anchor=tk.W)
-        self.expiry_status_label = ttk.Label(info_frame, textvariable=self.expiry_status_var, font=("", 11, "bold"))
+        self.expiry_status_label = ttk.Label(
+            info_frame, textvariable=self.expiry_status_var,
+            font=("", 11, "bold")
+        )
         self.expiry_status_label.pack(anchor=tk.W)
 
         # Tunnel list
-        tunnel_frame = ttk.LabelFrame(self.main_frame, text="Tunnels (max 10)", padding=10)
+        tunnel_frame = ttk.LabelFrame(
+            self.main_frame, text=self._tr("tunnels"), padding=10
+        )
         tunnel_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
         columns = ("id", "name", "type", "local", "remote_port", "status")
-        self.tree = ttk.Treeview(tunnel_frame, columns=columns, show="headings", selectmode="browse")
-        self.tree.heading("id", text="ID")
-        self.tree.heading("name", text="Name")
-        self.tree.heading("type", text="Type")
-        self.tree.heading("local", text="Local")
-        self.tree.heading("remote_port", text="Remote Port")
-        self.tree.heading("status", text="Status")
+        self.tree = ttk.Treeview(
+            tunnel_frame, columns=columns, show="headings", selectmode="browse"
+        )
+        self.tree.heading("id", text=self._tr("tunnel_id"))
+        self.tree.heading("name", text=self._tr("tunnel_name"))
+        self.tree.heading("type", text=self._tr("tunnel_type"))
+        self.tree.heading("local", text=self._tr("tunnel_local"))
+        self.tree.heading("remote_port", text=self._tr("tunnel_remote"))
+        self.tree.heading("status", text=self._tr("tunnel_status"))
         self.tree.column("id", width=40)
         self.tree.column("name", width=120)
         self.tree.column("type", width=60)
@@ -478,7 +791,8 @@ class FrpLoginApp:
         self.tree.column("remote_port", width=100)
         self.tree.column("status", width=80)
 
-        scrollbar = ttk.Scrollbar(tunnel_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        scrollbar = ttk.Scrollbar(tunnel_frame, orient=tk.VERTICAL,
+                                  command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -486,23 +800,28 @@ class FrpLoginApp:
         # Action buttons
         action_frame = ttk.Frame(self.main_frame)
         action_frame.pack(fill=tk.X, pady=10)
-        ttk.Button(action_frame, text="Create Tunnel", command=self._create_tunnel_dialog).pack(side=tk.LEFT, padx=5)
-        ttk.Button(action_frame, text="Enable", command=self._enable_tunnel).pack(side=tk.LEFT, padx=5)
-        ttk.Button(action_frame, text="Disable", command=self._disable_tunnel).pack(side=tk.LEFT, padx=5)
-        ttk.Button(action_frame, text="Delete", command=self._delete_tunnel).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text=self._tr("create_tunnel"),
+                   command=self._create_tunnel_dialog).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text=self._tr("enable"),
+                   command=self._enable_tunnel).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text=self._tr("disable"),
+                   command=self._disable_tunnel).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text=self._tr("delete"),
+                   command=self._delete_tunnel).pack(side=tk.LEFT, padx=5)
 
         # frpc status
-        self.frpc_status_var = tk.StringVar(value="frpc: idle")
-        ttk.Label(self.main_frame, textvariable=self.frpc_status_var, foreground="gray").pack(anchor=tk.W, pady=2)
+        self.frpc_status_var = tk.StringVar(value=self._tr("frpc_idle"))
+        ttk.Label(self.main_frame, textvariable=self.frpc_status_var,
+                  foreground="gray").pack(anchor=tk.W, pady=2)
 
         self._update_frpc_status()
         self._refresh_data()
 
     def _update_frpc_status(self):
         if is_frpc_running():
-            self.frpc_status_var.set("frpc: RUNNING")
+            self.frpc_status_var.set(self._tr("frpc_running"))
         else:
-            self.frpc_status_var.set("frpc: idle")
+            self.frpc_status_var.set(self._tr("frpc_idle"))
         if self._refresh_timer is None:
             self._refresh_timer = self.root.after(5000, self._update_frpc_status)
 
@@ -527,23 +846,30 @@ class FrpLoginApp:
         info = self.current_user_info
         if not info:
             return
-        self.user_id_var.set(f"User: {info['user_id']}  |  Email: {info['email']}")
+        tr_user = self._tr("user")
+        tr_email = self._tr("email_label")
+        tr_expiration = self._tr("expiration")
+        self.user_id_var.set(
+            f"{tr_user} {info['user_id']}  |  {tr_email} {info['email']}"
+        )
         if info["expired"]:
-            self.expiry_var.set("Expiration: EXPIRED")
-            self.expiry_status_var.set("Status: Expired - tunnels cannot be enabled")
+            self.expiry_var.set(f"{tr_expiration} {self._tr('expired')}")
+            self.expiry_status_var.set(self._tr("expired_status"))
             self.expiry_status_label.configure(foreground="red")
         else:
-            self.expiry_var.set(f"Expires: {info['expires_at']}")
-            self.expiry_status_var.set("Status: Active")
+            self.expiry_var.set(f"{tr_expiration} {info['expires_at']}")
+            self.expiry_status_var.set(self._tr("active_status"))
             self.expiry_status_label.configure(foreground="green")
 
     def _update_tunnel_list(self, tunnels):
         for item in self.tree.get_children():
             self.tree.delete(item)
+        tr_enabled = self._tr("tunnel_enabled")
+        tr_disabled = self._tr("tunnel_disabled")
         for t in tunnels:
             local = f"{t.get('local_ip', '127.0.0.1')}:{t['local_port']}"
             remote = t.get("remote_port", "")
-            status = "Enabled" if t["enabled"] else "Disabled"
+            status = tr_enabled if t["enabled"] else tr_disabled
             self.tree.insert(
                 "", tk.END,
                 values=(t["id"], t["name"], t["tunnel_type"], local, remote, status),
@@ -552,7 +878,7 @@ class FrpLoginApp:
     def _get_selected_tunnel(self):
         sel = self.tree.selection()
         if not sel:
-            messagebox.showwarning("Warning", "Please select a tunnel")
+            self._show_warning("warning", self._tr("select_tunnel"))
             return None
         item = self.tree.item(sel[0])
         values = item["values"]
@@ -568,8 +894,8 @@ class FrpLoginApp:
     # ---- Tunnel Actions ----
     def _create_tunnel_dialog(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Create Tunnel")
-        dialog.geometry("400x300")
+        dialog.title(self._tr("create_tunnel_title"))
+        dialog.geometry("420+300+300")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
@@ -577,25 +903,44 @@ class FrpLoginApp:
         frame = ttk.Frame(dialog, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=self._tr("name_label")).grid(
+            row=0, column=0, sticky=tk.W, pady=5
+        )
         name_var = tk.StringVar()
-        ttk.Entry(frame, textvariable=name_var, width=30).grid(row=0, column=1, pady=5)
+        ttk.Entry(frame, textvariable=name_var, width=30).grid(
+            row=0, column=1, pady=5
+        )
 
-        ttk.Label(frame, text="Type:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=self._tr("type_label")).grid(
+            row=1, column=0, sticky=tk.W, pady=5
+        )
         type_var = tk.StringVar(value="tcp")
-        type_combo = ttk.Combobox(frame, textvariable=type_var, values=["tcp", "udp"], width=27, state="readonly")
+        type_combo = ttk.Combobox(
+            frame, textvariable=type_var, values=["tcp", "udp"],
+            width=27, state="readonly"
+        )
         type_combo.grid(row=1, column=1, pady=5)
 
-        ttk.Label(frame, text="Local IP:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=self._tr("local_ip_label")).grid(
+            row=2, column=0, sticky=tk.W, pady=5
+        )
         ip_var = tk.StringVar(value="127.0.0.1")
-        ttk.Entry(frame, textvariable=ip_var, width=30).grid(row=2, column=1, pady=5)
+        ttk.Entry(frame, textvariable=ip_var, width=30).grid(
+            row=2, column=1, pady=5
+        )
 
-        ttk.Label(frame, text="Local Port:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=self._tr("local_port_label")).grid(
+            row=3, column=0, sticky=tk.W, pady=5
+        )
         port_var = tk.StringVar()
-        ttk.Entry(frame, textvariable=port_var, width=30).grid(row=3, column=1, pady=5)
+        ttk.Entry(frame, textvariable=port_var, width=30).grid(
+            row=3, column=1, pady=5
+        )
 
         err_var = tk.StringVar()
-        ttk.Label(frame, textvariable=err_var, foreground="red").grid(row=4, column=0, columnspan=2, pady=5)
+        ttk.Label(frame, textvariable=err_var, foreground="red").grid(
+            row=4, column=0, columnspan=2, pady=5
+        )
 
         def do_create():
             name = name_var.get().strip()
@@ -603,21 +948,22 @@ class FrpLoginApp:
             local_ip = ip_var.get().strip()
             local_port = port_var.get().strip()
             if not name or not local_port:
-                err_var.set("Name and port required")
+                err_var.set(self._tr("name_port_required"))
                 return
             try:
                 local_port = int(local_port)
             except ValueError:
-                err_var.set("Port must be a number")
+                err_var.set(self._tr("port_must_be_number"))
                 return
 
             def create_thread():
                 try:
                     resp = self.api.create_tunnel(name, ttype, local_port, local_ip)
                     if resp.status_code == 201:
-                        self.root.after(0, lambda: [dialog.destroy(), self._refresh_data()])
+                        self.root.after(0, lambda: [dialog.destroy(),
+                                                     self._refresh_data()])
                     else:
-                        err = resp.json().get("error", "Unknown error")
+                        err = resp.json().get("error", self._tr("error"))
                         self.root.after(0, lambda: err_var.set(err))
                 except requests.RequestException as e:
                     self.root.after(0, lambda: err_var.set(str(e)))
@@ -626,28 +972,32 @@ class FrpLoginApp:
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=5, column=1, pady=15, sticky=tk.E)
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Create", command=do_create).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("cancel"),
+                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("create"),
+                   command=do_create).pack(side=tk.LEFT, padx=5)
 
     def _enable_tunnel(self):
         tunnel = self._get_selected_tunnel()
         if not tunnel:
             return
-        if tunnel["status"] == "Enabled":
-            messagebox.showinfo("Info", "Tunnel already enabled")
+        tr_enabled = self._tr("tunnel_enabled")
+        if tunnel["status"] == tr_enabled:
+            self._show_info("info", self._tr("tunnel_already_enabled"))
             return
         if self.current_user_info and self.current_user_info.get("expired"):
-            messagebox.showerror("Error", "Account has expired")
+            self._show_error("error", self._tr("account_expired"))
             return
 
-        threading.Thread(target=self._enable_thread, args=(tunnel,), daemon=True).start()
+        threading.Thread(target=self._enable_thread,
+                         args=(tunnel,), daemon=True).start()
 
     def _enable_thread(self, tunnel):
         try:
             resp = self.api.enable_tunnel(tunnel["id"])
             if resp.status_code != 200:
-                err = resp.json().get("error", "Failed to enable")
-                self.root.after(0, lambda: messagebox.showerror("Error", err))
+                err = resp.json().get("error", self._tr("enable_failed"))
+                self.root.after(0, lambda: self._show_error("error", err))
                 return
             data = resp.json()
             write_frpc_ini(
@@ -664,48 +1014,55 @@ class FrpLoginApp:
             frpc_ok, msg = start_frpc()
             if frpc_ok:
                 self.root.after(0, lambda: [
-                    TunnelEnableDialog(self.root, tunnel, data),
+                    TunnelEnableDialog(self.root, tunnel, data, self._tr),
                     self._refresh_data(),
                 ])
             else:
-                self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to start frpc: {msg}"))
+                err_msg = f"{self._tr('start_frpc_failed')}: {msg}"
+                self.root.after(
+                    0, lambda: self._show_error("error", err_msg)
+                )
         except requests.RequestException as e:
-            self.root.after(0, lambda: messagebox.showerror("Connection Error", str(e)))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
 
     def _disable_tunnel(self):
         tunnel = self._get_selected_tunnel()
         if not tunnel:
             return
-        if tunnel["status"] != "Enabled":
-            messagebox.showinfo("Info", "Tunnel is not enabled")
+        if tunnel["status"] != self._tr("tunnel_enabled"):
+            self._show_info("info", self._tr("tunnel_not_enabled"))
             return
-        threading.Thread(target=self._disable_thread, args=(tunnel,), daemon=True).start()
+        threading.Thread(target=self._disable_thread,
+                         args=(tunnel,), daemon=True).start()
 
     def _disable_thread(self, tunnel):
         try:
             resp = self.api.disable_tunnel(tunnel["id"])
             if resp.status_code != 200:
-                err = resp.json().get("error", "Failed to disable")
-                self.root.after(0, lambda: messagebox.showerror("Error", err))
+                err = resp.json().get("error", self._tr("disable_failed"))
+                self.root.after(0, lambda: self._show_error("error", err))
                 return
             _, msg = stop_frpc()
             self.root.after(0, lambda m=msg: [
-                messagebox.showinfo("Success", f"Tunnel disabled\n{m}"),
+                self._show_info("success",
+                                f"{self._tr('tunnel_disabled')}\n{m}"),
                 self._refresh_data(),
             ])
         except requests.RequestException as e:
-            self.root.after(0, lambda: messagebox.showerror("Connection Error", str(e)))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
 
     def _delete_tunnel(self):
         tunnel = self._get_selected_tunnel()
         if not tunnel:
             return
-        if tunnel["status"] == "Enabled":
-            messagebox.showerror("Error", "Disable the tunnel before deleting")
+        if tunnel["status"] == self._tr("tunnel_enabled"):
+            self._show_error("error", self._tr("disable_before_delete"))
             return
-        if not messagebox.askyesno("Confirm", f"Delete tunnel '{tunnel['name']}'?"):
+        msg = f"{self._tr('confirm_delete')} '{tunnel['name']}'?"
+        if not self._show_yesno("confirm", msg):
             return
-        threading.Thread(target=self._delete_thread, args=(tunnel,), daemon=True).start()
+        threading.Thread(target=self._delete_thread,
+                         args=(tunnel,), daemon=True).start()
 
     def _delete_thread(self, tunnel):
         try:
@@ -713,10 +1070,10 @@ class FrpLoginApp:
             if resp.status_code == 200:
                 self.root.after(0, self._refresh_data)
             else:
-                err = resp.json().get("error", "Failed to delete")
-                self.root.after(0, lambda: messagebox.showerror("Error", err))
+                err = resp.json().get("error", self._tr("delete_failed"))
+                self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: messagebox.showerror("Connection Error", str(e)))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
 
     def _logout(self):
         self.current_user_id = None
