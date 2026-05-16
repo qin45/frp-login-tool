@@ -176,7 +176,7 @@ class Database:
         sql = """
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id VARCHAR(10) UNIQUE NOT NULL,
+            user_id VARCHAR(10) UNIQUE,
             email VARCHAR(255) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
             verified TINYINT(1) DEFAULT 0,
@@ -187,6 +187,11 @@ class Database:
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
         self._execute(sql)
+        # Fix existing tables that may have user_id NOT NULL
+        try:
+            self._execute("ALTER TABLE users MODIFY user_id VARCHAR(10) UNIQUE")
+        except Exception:
+            pass
         sql2 = """
         CREATE TABLE IF NOT EXISTS tunnels (
             id INT AUTO_INCREMENT PRIMARY KEY,
