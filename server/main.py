@@ -750,7 +750,13 @@ def cmd_start():
     port = https_cfg.get("port", 8443)
     cert_file = https_cfg.get("cert_file", "")
     key_file = https_cfg.get("key_file", "")
-    ssl_ctx = (cert_file, key_file) if cert_file and key_file else "adhoc"
+    if cert_file and key_file and os.path.isfile(cert_file) and os.path.isfile(key_file):
+        ssl_ctx = (cert_file, key_file)
+    else:
+        if cert_file and key_file:
+            logger.warning(f"SSL files not found (cert={cert_file}, key={key_file}), "
+                           "falling back to auto-generated self-signed certificate")
+        ssl_ctx = "adhoc"
     logger.info(f"Starting API server on port {port} (HTTPS)...")
     try:
         app.run(host="0.0.0.0", port=port, ssl_context=ssl_ctx, debug=False, threaded=True)
