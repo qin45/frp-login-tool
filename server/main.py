@@ -379,6 +379,8 @@ class EmailSender:
         msg["To"] = to_email
         try:
             ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
             port = self.cfg["port"]
             if port == 465:
                 with smtplib.SMTP_SSL(self.cfg["server"], port, context=ctx) as server:
