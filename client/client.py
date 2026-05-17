@@ -597,75 +597,77 @@ class FrpLoginApp:
     def _ensure_frpc_core(self):
         """Check if frpc.exe exists; if not, prompt to download and extract it."""
         if FRPC_EXE.exists():
-            return True
+            return
         want = messagebox.askyesno(
             self._tr("missing_core_file"),
             self._tr("missing_core_file_prompt"),
         )
         if not want:
-            return False
+            return
 
+        threading.Thread(target=self._download_frpc_thread, daemon=True).start()
+
+    def _download_frpc_thread(self):
         url = "https://github.com/fatedier/frp/releases/download/v0.68.1/frp_0.68.1_windows_amd64.zip"
         expected_hash = "74d753a681d2c07931d150b21ed294c224abe36053f67393cf46223f53bc871c"
 
-        # Download
-        self.status_var.set(self._tr("downloading"))
-        self.root.update()
+        # Update status on main thread
+        self.root.after(0, lambda: self.status_var.set(self._tr("downloading")))
+
         try:
             resp = requests.get(url, stream=True, timeout=120, verify=False)
             resp.raise_for_status()
             data = resp.content
         except requests.RequestException as e:
-            messagebox.showerror(self._tr("core_download_failed"), str(e))
-            return False
+            self.root.after(0, lambda: messagebox.showerror(
+                self._tr("core_download_failed"), str(e)))
+            return
 
         # Verify SHA256
-        self.status_var.set(self._tr("verifying"))
-        self.root.update()
+        self.root.after(0, lambda: self.status_var.set(self._tr("verifying")))
         actual_hash = hashlib.sha256(data).hexdigest()
         if actual_hash.lower() != expected_hash.lower():
-            messagebox.showerror(
+            self.root.after(0, lambda: messagebox.showerror(
                 self._tr("core_download_failed"),
                 self._tr("sha256_mismatch"),
-            )
-            return False
+            ))
+            return
 
         # Extract frpc.exe from zip in memory
-        self.status_var.set(self._tr("extracting"))
-        self.root.update()
+        self.root.after(0, lambda: self.status_var.set(self._tr("extracting")))
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
-                # Find frpc.exe in the zip (it's inside a top-level folder)
                 frpc_path = next(
                     (n for n in zf.namelist() if n.endswith("frpc.exe")),
                     None,
                 )
                 if not frpc_path:
-                    messagebox.showerror(
+                    self.root.after(0, lambda: messagebox.showerror(
                         self._tr("core_download_failed"),
                         "frpc.exe not found in archive",
-                    )
-                    return False
+                    ))
+                    return
                 FRPC_DIR.mkdir(parents=True, exist_ok=True)
                 with zf.open(frpc_path) as src, open(FRPC_EXE, "wb") as dst:
                     dst.write(src.read())
         except zipfile.BadZipFile:
-            messagebox.showerror(
-                self._tr("core_download_failed"),
-                "Invalid zip file",
-            )
-            return False
+            self.root.after(0, lambda: messagebox.showerror(
+                self._tr("core_download_failed"), "Invalid zip file",
+            ))
+            return
 
         # Create frpc.ini if not present
         if not FRPC_INI.exists():
             FRPC_DIR.mkdir(parents=True, exist_ok=True)
             FRPC_INI.write_text("[common]\n", encoding="utf-8")
 
-        messagebox.showinfo(
+        self.root.after(0, lambda: messagebox.showinfo(
             self._tr("success"),
             self._tr("core_download_success"),
-        )
-        return True
+        ))
+
+        # Restore status
+        self.root.after(0, lambda: self.status_var.set(self._tr("connect_hint")))
 
     # ============================
     # Login / Register Screen
