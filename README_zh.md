@@ -1,5 +1,7 @@
 # FRP Login Tool
 
+[**README**](README.md) | **中文文档**
+
 FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务端。
 
 ## 架构

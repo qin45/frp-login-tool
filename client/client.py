@@ -1197,10 +1197,10 @@ class FrpLoginApp:
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=5, column=1, pady=15, sticky=tk.E)
-        ttk.Button(btn_frame, text=self._tr("cancel"),
-                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text=self._tr("create"),
                    command=do_create).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("cancel"),
+                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _enable_tunnel(self):
         tunnel = self._get_selected_tunnel()
@@ -1346,10 +1346,10 @@ class FrpLoginApp:
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(pady=10)
-        ttk.Button(btn_frame, text=self._tr("cancel"),
-                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text=self._tr("ok"),
                    command=do_activate).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("cancel"),
+                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _logout(self):
         self.current_user_id = None

@@ -1,5 +1,7 @@
 # FRP Login Tool
 
+[**中文文档**](README_zh.md)
+
 A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with a GUI client and CLI server.
 
 ## Architecture

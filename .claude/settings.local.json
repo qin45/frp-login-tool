@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('client/client.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('server/main.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('server/main.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Server: Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('client/client.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Client: Syntax OK'\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('server/main.py', doraise=True\\); print\\('server OK'\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('client/client.py', doraise=True\\); print\\('client OK'\\)\")",
+      "Bash(git commit *)"
+    ]
+  }
+}

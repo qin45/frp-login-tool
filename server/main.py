@@ -279,7 +279,7 @@ class Database:
             "SELECT * FROM activation_codes WHERE code=%s AND used=0", (code,)
         )
         if not row:
-            return False, "Invalid or already used activation code"
+            return False, "无效的激活码或已被使用"
         duration = timedelta(
             days=row["duration_days"],
             hours=row["duration_hours"],
