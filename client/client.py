@@ -591,6 +591,7 @@ class FrpLoginApp:
             self._refresh_timer = None
 
     def _on_close(self):
+        threading.Thread(target=self._disable_all_tunnels, daemon=True).start()
         stop_frpc()
         self.root.destroy()
 
@@ -1147,8 +1148,7 @@ class FrpLoginApp:
             self.frpc_status_var.set(self._tr("frpc_running"))
         else:
             self.frpc_status_var.set(self._tr("frpc_idle"))
-        if self._refresh_timer is None:
-            self._refresh_timer = self.root.after(5000, self._update_frpc_status)
+        self._refresh_timer = self.root.after(5000, self._update_frpc_status)
 
     def _refresh_data(self):
         threading.Thread(target=self._refresh_thread, daemon=True).start()
@@ -1451,10 +1451,23 @@ class FrpLoginApp:
         ttk.Button(btn_frame, text=self._tr("cancel"),
                    command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
+    def _disable_all_tunnels(self):
+        """Disable all enabled tunnels for the current user."""
+        try:
+            resp = self.api.list_tunnels()
+            if resp.status_code == 200:
+                tunnels = resp.json().get("tunnels", [])
+                for t in tunnels:
+                    if t.get("enabled"):
+                        self.api.disable_tunnel(t["id"])
+        except requests.RequestException:
+            pass
+
     def _logout(self):
+        threading.Thread(target=self._disable_all_tunnels, daemon=True).start()
+        stop_frpc()
         self.current_user_id = None
         self.current_user_info = None
-        stop_frpc()
         self.api.logout()
         self._show_login()
 
