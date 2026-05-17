@@ -21,7 +21,7 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-BASE_DIR = Path(__file__).parent.resolve()
+BASE_DIR = Path(sys.executable).parent.resolve() if getattr(sys, 'frozen', False) else Path(__file__).parent.resolve()
 FRPC_DIR = BASE_DIR / "frpc"
 FRPC_INI = FRPC_DIR / "frpc.ini"
 FRPC_EXE = FRPC_DIR / "frpc.exe"
