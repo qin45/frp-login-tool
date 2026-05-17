@@ -777,7 +777,7 @@ def cmd_set_expiry(args):
         print("Not configured. Run 'python main.py setup' first.")
         sys.exit(1)
     try:
-        expires_at = datetime.strptime(args.expiry, "%Y-%m-%d %H:%M")
+        expires_at = datetime.strptime(f"{args.date} {args.time}", "%Y-%m-%d %H:%M")
     except ValueError:
         print("Invalid format. Use: YYYY-MM-DD HH:MM")
         sys.exit(1)
@@ -835,7 +835,8 @@ def main():
     sp.add_parser("start", help="Start server")
     p_exp = sp.add_parser("set-expiry", help="Set user expiration")
     p_exp.add_argument("user_id", help="e.g. user0001")
-    p_exp.add_argument("expiry", help="YYYY-MM-DD HH:MM")
+    p_exp.add_argument("date", help="Date: YYYY-MM-DD")
+    p_exp.add_argument("time", help="Time: HH:MM")
     sp.add_parser("list-users", help="List registered users")
     args = parser.parse_args()
     if args.command == "setup":
