@@ -155,6 +155,8 @@ LANGUAGES = {
         "activation_success": "激活成功",
         "activation_failed": "激活失败",
         "new_expiry": "新的到期时间",
+        # Only one tunnel
+        "only_one_tunnel": "同时只能启用一条隧道",
         # Core file download
         "missing_core_file": "缺失核心文件",
         "missing_core_file_prompt": "缺失核心文件，是否自动下载？",
@@ -272,6 +274,8 @@ LANGUAGES = {
         "activation_success": "Activation successful",
         "activation_failed": "Activation failed",
         "new_expiry": "New expiration",
+        # Only one tunnel
+        "only_one_tunnel": "Only one tunnel can be enabled at a time",
         # Core file download
         "missing_core_file": "Missing Core File",
         "missing_core_file_prompt": "Missing core file. Download automatically?",
@@ -1313,6 +1317,14 @@ class FrpLoginApp:
         if self.current_user_info and self.current_user_info.get("expired"):
             self._show_error("error", self._tr("account_expired"))
             return
+
+        # Check that no other tunnel is already enabled
+        tr_enabled = self._tr("tunnel_enabled")
+        for item in self.tree.get_children():
+            vals = self.tree.item(item)["values"]
+            if int(vals[0]) != tunnel["id"] and vals[5] == tr_enabled:
+                self._show_error("error", self._tr("only_one_tunnel"))
+                return
 
         threading.Thread(target=self._enable_thread,
                          args=(tunnel,), daemon=True).start()
