@@ -795,12 +795,14 @@ def cmd_set_expiry(args):
         sys.exit(1)
     db.update_expiry(args.user_id, expires_at)
     print(f"✓ Expiry for {args.user_id} set to {expires_at}")
+    # Try to generate token via fp-multiuser (may fail if server not running)
     token_mgr = TokenManager(cfg["fp_multiuser"]["api_url"])
     token = token_mgr.generate_token_for_user(args.user_id)
     if token:
         print(f"✓ Token generated for {args.user_id}")
     else:
-        print(f"⚠ Token generation failed (is fp-multiuser running?)")
+        print(f"ℹ Token will be generated when server is running and tunnel is enabled.")
+        print(f"  Start the server with: python main.py start")
 
 
 def cmd_list_users(_args=None):
