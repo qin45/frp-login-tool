@@ -612,7 +612,7 @@ class FrpLoginApp:
         self.status_var.set(self._tr("downloading"))
         self.root.update()
         try:
-            resp = requests.get(url, stream=True, timeout=120)
+            resp = requests.get(url, stream=True, timeout=120, verify=False)
             resp.raise_for_status()
             data = resp.content
         except requests.RequestException as e:
