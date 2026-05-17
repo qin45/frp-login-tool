@@ -14,6 +14,7 @@ FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务
 - **隧道管理**：每用户最多创建 10 条隧道
 - **自动端口分配**：每条隧道从 20000-21000 分配固定端口
 - **到期控制**：管理员可设置用户到期时间，到期后自动禁用
+- **激活码**：管理员可生成带时长的激活码，用户输入后延长到期时间
 - **fp-multiuser 集成**：通过 REST API 自动生成和清理令牌
 - **HTTPS 通信**：服务端与客户端之间使用 HTTPS 协议
 - **子进程管理**：服务端管理 `frps` 和 `fp-multiuser.py`；客户端管理 `frpc.exe`
@@ -74,6 +75,8 @@ FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务
 | `python main.py start` | 启动服务端 |
 | `python main.py set-expiry <user_id> <YYYY-MM-DD HH:MM>` | 设置用户到期时间 |
 | `python main.py list-users` | 列出所有注册用户 |
+| `python main.py add-code <code> <DD-HH-MM>` | 添加激活码 |
+| `python main.py list-codes` | 列出所有激活码 |
 
 ### 设置用户到期时间
 
@@ -82,6 +85,22 @@ python main.py set-expiry user0001 "2026-12-31 23:59"
 ```
 
 设置到期时间后会自动通过 fp-multiuser API 为该用户生成令牌。
+
+### 管理激活码
+
+添加一个时长为 30 天的激活码：
+
+```bash
+python main.py add-code MYCODE30 30-00-00
+```
+
+列出所有激活码：
+
+```bash
+python main.py list-codes
+```
+
+用户在客户端主面板点击 **激活** 按钮，输入激活码即可延长到期时间。若账户已到期，则从当前时间加上激活时长；若未到期，则在原到期时间上累加。
 
 ## 工作原理
 

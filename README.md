@@ -14,6 +14,7 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 - **Tunnel Management**: each user can create up to 10 tunnels
 - **Automatic Port Allocation**: each tunnel gets a fixed port from 20000-21000
 - **Expiration Control**: admin sets expiration per user; expired users lose access
+- **Activation Codes**: admin generates codes with custom durations to extend user expiration
 - **fp-multiuser Integration**: automatic token generation and cleanup via REST API
 - **HTTPS Communication** between client and server
 - **Subprocess Management**: server manages `frps` and `fp-multiuser.py`; client manages `frpc.exe`
@@ -74,6 +75,8 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 | `python main.py start` | Start the server |
 | `python main.py set-expiry <user_id> <YYYY-MM-DD HH:MM>` | Set user expiration |
 | `python main.py list-users` | List all registered users |
+| `python main.py add-code <code> <DD-HH-MM>` | Add an activation code |
+| `python main.py list-codes` | List all activation codes |
 
 ### Setting User Expiration
 
@@ -82,6 +85,22 @@ python main.py set-expiry user0001 "2026-12-31 23:59"
 ```
 
 This sets the expiration time and automatically generates a token for the user via fp-multiuser API.
+
+### Managing Activation Codes
+
+Add an activation code with a duration of 30 days:
+
+```bash
+python main.py add-code MYCODE30 30-00-00
+```
+
+List all activation codes:
+
+```bash
+python main.py list-codes
+```
+
+Users can enter activation codes in the client GUI by clicking the **Activate** button on the main dashboard. If the account is already expired, the activation duration is added from the current time; if still active, the duration is added to the existing expiration.
 
 ## How It Works
 

@@ -205,6 +205,20 @@ class Database:
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
         self._execute(sql2)
+        sql3 = """
+        CREATE TABLE IF NOT EXISTS activation_codes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            code VARCHAR(255) UNIQUE NOT NULL,
+            duration_days INT NOT NULL DEFAULT 0,
+            duration_hours INT NOT NULL DEFAULT 0,
+            duration_minutes INT NOT NULL DEFAULT 0,
+            used TINYINT(1) DEFAULT 0,
+            used_by VARCHAR(10),
+            used_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """
+        self._execute(sql3)
 
     # ---- User operations ----
     def create_user(self, email, password_hash):
@@ -251,6 +265,46 @@ class Database:
             "SELECT user_id FROM users WHERE expires_at <= %s AND verified=1",
             (datetime.now(),),
         )
+
+    # ---- Activation code operations ----
+    def add_activation_code(self, code, days, hours, minutes):
+        self._execute(
+            "INSERT INTO activation_codes (code, duration_days, duration_hours, duration_minutes) "
+            "VALUES (%s, %s, %s, %s)",
+            (code, days, hours, minutes),
+        )
+
+    def use_activation_code(self, code, user_id):
+        row = self._fetch_one(
+            "SELECT * FROM activation_codes WHERE code=%s AND used=0", (code,)
+        )
+        if not row:
+            return False, "Invalid or already used activation code"
+        duration = timedelta(
+            days=row["duration_days"],
+            hours=row["duration_hours"],
+            minutes=row["duration_minutes"],
+        )
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return False, "User not found"
+        now = datetime.now()
+        current_expiry = user["expires_at"]
+        if current_expiry and current_expiry > now:
+            new_expiry = current_expiry + duration
+        else:
+            new_expiry = now + duration
+        self._execute(
+            "UPDATE users SET expires_at=%s WHERE user_id=%s", (new_expiry, user_id)
+        )
+        self._execute(
+            "UPDATE activation_codes SET used=1, used_by=%s, used_at=%s WHERE code=%s",
+            (user_id, now, code),
+        )
+        return True, new_expiry
+
+    def list_activation_codes(self):
+        return self._fetch_all("SELECT * FROM activation_codes ORDER BY id")
 
     # ---- Tunnel operations ----
     def get_available_port(self):
@@ -817,6 +871,27 @@ def create_app(db, email_sender, token_mgr, cfg):
             return jsonify({"error": err}), 400
         return jsonify({"status": "ok"})
 
+    @app.route("/api/user/activate", methods=["POST"])
+    def activate_account():
+        uid = validate_session(
+            request.headers.get("Authorization", "").replace("Bearer ", "")
+        )
+        if not uid:
+            return jsonify({"error": "Unauthorized"}), 401
+        data = request.get_json()
+        if not data or "code" not in data:
+            return jsonify({"error": "Activation code required"}), 400
+        code = data["code"].strip()
+        if not code:
+            return jsonify({"error": "Activation code required"}), 400
+        ok, result = db.use_activation_code(code, uid)
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({
+            "status": "ok",
+            "new_expires_at": result.isoformat(),
+        })
+
     return app
 
 
@@ -924,6 +999,53 @@ def cmd_list_users(_args=None):
         print(f"{u['id']:<5} {u['user_id']:<12} {u['email']:<30} {v:<3} {exp:<20}")
 
 
+def cmd_add_code(args):
+    cfg = load_config()
+    if not cfg.get("configured"):
+        print("Not configured.")
+        sys.exit(1)
+    try:
+        db = Database(cfg["mysql"])
+    except Exception as e:
+        print(f"DB connection failed: {e}")
+        sys.exit(1)
+    try:
+        parts = args.duration.split("-")
+        if len(parts) != 3:
+            print("Invalid format. Use: DD-HH-MM")
+            sys.exit(1)
+        days, hours, minutes = int(parts[0]), int(parts[1]), int(parts[2])
+    except ValueError:
+        print("Invalid format. Use: DD-HH-MM")
+        sys.exit(1)
+    db.add_activation_code(args.code, days, hours, minutes)
+    print(f"✓ Activation code '{args.code}' added (duration: {days}d {hours}h {minutes}m)")
+
+
+def cmd_list_codes(_args=None):
+    cfg = load_config()
+    if not cfg.get("configured"):
+        print("Not configured.")
+        return
+    try:
+        db = Database(cfg["mysql"])
+    except Exception as e:
+        print(f"DB connection failed: {e}")
+        return
+    codes = db.list_activation_codes()
+    if not codes:
+        print("No activation codes.")
+        return
+    print(f"\n{'ID':<5} {'Code':<25} {'Duration':<15} {'Used':<5} {'Used By':<12} {'Used At':<20}")
+    print("-" * 85)
+    for c in codes:
+        duration = f"{c['duration_days']}d {c['duration_hours']}h {c['duration_minutes']}m"
+        used = "Y" if c["used"] else "N"
+        used_at = c["used_at"].strftime("%Y-%m-%d %H:%M") if c["used_at"] else ""
+        used_by = c["used_by"] or ""
+        print(f"{c['id']:<5} {c['code']:<25} {duration:<15} {used:<5} {used_by:<12} {used_at:<20}")
+
+
 # ============================================================
 # Entry Point
 # ============================================================
@@ -937,6 +1059,10 @@ def main():
     p_exp.add_argument("date", help="Date: YYYY-MM-DD")
     p_exp.add_argument("time", help="Time: HH:MM")
     sp.add_parser("list-users", help="List registered users")
+    p_code = sp.add_parser("add-code", help="Add activation code")
+    p_code.add_argument("code", help="Activation code string")
+    p_code.add_argument("duration", help="Duration in DD-HH-MM format (e.g. 30-00-00)")
+    sp.add_parser("list-codes", help="List activation codes")
     args = parser.parse_args()
     if args.command == "setup":
         cmd_setup()
@@ -946,6 +1072,10 @@ def main():
         cmd_set_expiry(args)
     elif args.command == "list-users":
         cmd_list_users()
+    elif args.command == "add-code":
+        cmd_add_code(args)
+    elif args.command == "list-codes":
+        cmd_list_codes()
     else:
         parser.print_help()
 

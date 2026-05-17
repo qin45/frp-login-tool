@@ -145,6 +145,13 @@ LANGUAGES = {
         "password_reset_success": "密码重置成功",
         "reset_failed": "重置失败",
         "send_reset_code": "发送验证码",
+        # Activation code
+        "activate": "激活",
+        "activation_code": "激活码",
+        "enter_activation_code": "请输入激活码",
+        "activation_success": "激活成功",
+        "activation_failed": "激活失败",
+        "new_expiry": "新的到期时间",
     },
     LANG_EN: {
         "lang_name": "English",
@@ -246,6 +253,13 @@ LANGUAGES = {
         "password_reset_success": "Password reset successfully",
         "reset_failed": "Reset failed",
         "send_reset_code": "Send Code",
+        # Activation code
+        "activate": "Activate",
+        "activation_code": "Activation Code",
+        "enter_activation_code": "Please enter activation code",
+        "activation_success": "Activation successful",
+        "activation_failed": "Activation failed",
+        "new_expiry": "New expiration",
     },
 }
 
@@ -352,6 +366,9 @@ class ApiClient:
 
     def disable_tunnel(self, tunnel_id):
         return self._post(f"/api/tunnels/{tunnel_id}/disable")
+
+    def activate(self, code):
+        return self._post("/api/user/activate", {"code": code})
 
     def logout(self):
         self.session_token = ""
@@ -1014,6 +1031,8 @@ class FrpLoginApp:
                    command=self._disable_tunnel).pack(side=tk.LEFT, padx=5)
         ttk.Button(action_frame, text=self._tr("delete"),
                    command=self._delete_tunnel).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text=self._tr("activate"),
+                   command=self._activate_account).pack(side=tk.LEFT, padx=5)
 
         # frpc status
         self.frpc_status_var = tk.StringVar(value=self._tr("frpc_idle"))
@@ -1280,6 +1299,57 @@ class FrpLoginApp:
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self._show_error("error", str(e)))
+
+    def _activate_account(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title(self._tr("activate"))
+        dialog.geometry("400x200")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text=self._tr("activation_code"),
+                  font=("", 11)).pack(anchor=tk.W, pady=5)
+        code_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=code_var, width=35).pack(pady=5)
+
+        err_var = tk.StringVar()
+        ttk.Label(frame, textvariable=err_var, foreground="red").pack(pady=5)
+
+        def do_activate():
+            code = code_var.get().strip()
+            if not code:
+                err_var.set(self._tr("enter_activation_code"))
+                return
+
+            def activate_thread():
+                try:
+                    resp = self.api.activate(code)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        self.root.after(0, lambda: [
+                            dialog.destroy(),
+                            self._show_info("success",
+                                f"{self._tr('activation_success')}\n{self._tr('new_expiry')}: {data['new_expires_at']}"),
+                            self._refresh_data(),
+                        ])
+                    else:
+                        err = resp.json().get("error", self._tr("activation_failed"))
+                        self.root.after(0, lambda: err_var.set(err))
+                except requests.RequestException as e:
+                    self.root.after(0, lambda: err_var.set(str(e)))
+
+            threading.Thread(target=activate_thread, daemon=True).start()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text=self._tr("cancel"),
+                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("ok"),
+                   command=do_activate).pack(side=tk.LEFT, padx=5)
 
     def _logout(self):
         self.current_user_id = None
