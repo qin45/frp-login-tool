@@ -48,6 +48,10 @@ shutdown_event = threading.Event()
 session_map = {}
 session_lock = threading.Lock()
 
+# In-memory verification codes: {email: {"code": str, "expires_at": datetime, "cooldown_until": datetime}}
+verification_codes = {}
+verification_lock = threading.Lock()
+
 
 # ============================================================
 # Config Management
@@ -82,7 +86,7 @@ def setup_config():
     print("\n--- SMTP Configuration (for email verification) ---")
     smtp = {}
     smtp["server"] = input("SMTP Server: ").strip()
-    smtp["port"] = int(input("SMTP Port (default 587): ").strip() or "587")
+    smtp["port"] = int(input("SMTP Port (SSL 465 recommended): ").strip() or "465")
     smtp["username"] = input("SMTP Username: ").strip()
     smtp["password"] = input("SMTP Password: ").strip()
     smtp["from_email"] = input("From Email (default same as username): ").strip() or smtp["username"]
@@ -179,20 +183,13 @@ class Database:
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id VARCHAR(10) UNIQUE,
             email VARCHAR(255) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
+            password VARCHAR(255) NOT NULL DEFAULT '',
             verified TINYINT(1) DEFAULT 0,
-            verification_code VARCHAR(6),
-            code_expires_at DATETIME,
             expires_at DATETIME NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
         self._execute(sql)
-        # Fix existing tables that may have user_id NOT NULL
-        try:
-            self._execute("ALTER TABLE users MODIFY user_id VARCHAR(10) UNIQUE")
-        except Exception:
-            pass
         sql2 = """
         CREATE TABLE IF NOT EXISTS tunnels (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -210,20 +207,16 @@ class Database:
         self._execute(sql2)
 
     # ---- User operations ----
-    def create_user(self, email, password_hash, code):
-        user = self._fetch_one(
-            "SELECT * FROM users WHERE email=%s AND verification_code=%s AND verified=0",
-            (email, code),
-        )
-        if not user:
-            return None
-        if user["code_expires_at"] and user["code_expires_at"] < datetime.now():
+    def create_user(self, email, password_hash):
+        # Check if email already registered
+        existing = self._fetch_one("SELECT id FROM users WHERE email=%s", (email,))
+        if existing:
             return None
         user_id = self._generate_user_id()
         self._execute(
-            "UPDATE users SET user_id=%s, password=%s, verified=1, "
-            "expires_at=%s WHERE email=%s",
-            (user_id, password_hash, datetime.now() - timedelta(days=1), email),
+            "INSERT INTO users (user_id, email, password, verified, expires_at) "
+            "VALUES (%s, %s, %s, 1, %s)",
+            (user_id, email, password_hash, datetime.now() - timedelta(days=1)),
         )
         return user_id
 
@@ -236,32 +229,6 @@ class Database:
         else:
             num = 1
         return f"user{num:04d}"
-
-    def save_verification_code(self, email, code):
-        expires_at = datetime.now() + timedelta(minutes=10)
-        existing = self._fetch_one("SELECT id FROM users WHERE email=%s", (email,))
-        if existing:
-            self._execute(
-                "UPDATE users SET verification_code=%s, code_expires_at=%s WHERE email=%s",
-                (code, expires_at, email),
-            )
-        else:
-            self._execute(
-                "INSERT INTO users (email, password, verification_code, code_expires_at, "
-                "verified, expires_at) VALUES (%s, '', %s, %s, 0, %s)",
-                (email, code, expires_at, datetime.now()),
-            )
-
-    def verify_code(self, email, code):
-        user = self._fetch_one(
-            "SELECT * FROM users WHERE email=%s AND verification_code=%s AND verified=0",
-            (email, code),
-        )
-        if not user:
-            return False
-        if user["code_expires_at"] and user["code_expires_at"] < datetime.now():
-            return False
-        return True
 
     def get_user_by_email(self, email):
         return self._fetch_one("SELECT * FROM users WHERE email=%s", (email,))
@@ -412,10 +379,16 @@ class EmailSender:
         msg["To"] = to_email
         try:
             ctx = ssl.create_default_context()
-            with smtplib.SMTP(self.cfg["server"], self.cfg["port"]) as server:
-                server.starttls(context=ctx)
-                server.login(self.cfg["username"], self.cfg["password"])
-                server.sendmail(self.cfg["from_email"], [to_email], msg.as_string())
+            port = self.cfg["port"]
+            if port == 465:
+                with smtplib.SMTP_SSL(self.cfg["server"], port, context=ctx) as server:
+                    server.login(self.cfg["username"], self.cfg["password"])
+                    server.sendmail(self.cfg["from_email"], [to_email], msg.as_string())
+            else:
+                with smtplib.SMTP(self.cfg["server"], port) as server:
+                    server.starttls(context=ctx)
+                    server.login(self.cfg["username"], self.cfg["password"])
+                    server.sendmail(self.cfg["from_email"], [to_email], msg.as_string())
             return True, None
         except Exception as e:
             return False, str(e)
@@ -595,11 +568,33 @@ def create_app(db, email_sender, token_mgr, cfg):
         if not data or "email" not in data:
             return jsonify({"error": "Email required"}), 400
         email = data["email"].strip().lower()
+
+        # Check if already registered
+        if db.get_user_by_email(email):
+            return jsonify({"error": "Email already registered"}), 400
+
+        # Check cooldown (60s)
+        with verification_lock:
+            existing = verification_codes.get(email)
+            if existing and existing["cooldown_until"] > datetime.now():
+                remaining = int((existing["cooldown_until"] - datetime.now()).total_seconds())
+                return jsonify({"error": f"Please wait {remaining}s before requesting again"}), 429
+
         code = "".join(random.choices(string.digits, k=6))
-        db.save_verification_code(email, code)
+        now = datetime.now()
+        with verification_lock:
+            verification_codes[email] = {
+                "code": code,
+                "expires_at": now + timedelta(minutes=10),
+                "cooldown_until": now + timedelta(seconds=60),
+            }
+
         ok, err = email_sender.send_verification_code(email, code)
         if ok:
             return jsonify({"status": "ok", "message": "Verification code sent"})
+        # Remove on send failure
+        with verification_lock:
+            verification_codes.pop(email, None)
         return jsonify({"error": f"Failed to send email: {err}"}), 500
 
     @app.route("/api/auth/register/verify", methods=["POST"])
@@ -614,12 +609,24 @@ def create_app(db, email_sender, token_mgr, cfg):
             return jsonify({"error": "email, code, password required"}), 400
         if len(password) < 6:
             return jsonify({"error": "Password must be >= 6 characters"}), 400
-        if not db.verify_code(email, code):
-            return jsonify({"error": "Invalid or expired code"}), 400
+
+        # Verify in-memory code
+        with verification_lock:
+            stored = verification_codes.get(email)
+            if not stored:
+                return jsonify({"error": "No verification code requested"}), 400
+            if stored["code"] != code:
+                return jsonify({"error": "Invalid verification code"}), 400
+            if stored["expires_at"] < datetime.now():
+                verification_codes.pop(email, None)
+                return jsonify({"error": "Verification code expired"}), 400
+            # Code is valid - remove it so it can't be reused
+            verification_codes.pop(email, None)
+
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
-        user_id = db.create_user(email, pw_hash, code)
+        user_id = db.create_user(email, pw_hash)
         if not user_id:
-            return jsonify({"error": "Verification failed, re-request code"}), 400
+            return jsonify({"error": "Email already registered"}), 400
         token = create_session(user_id)
         user = db.get_user_by_id(user_id)
         return jsonify({

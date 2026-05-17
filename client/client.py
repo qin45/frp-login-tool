@@ -123,6 +123,8 @@ LANGUAGES = {
         "tunnel_enabled_title": "隧道已启用",
         "tunnel_enabled_msg": "隧道已启用成功",
         "frpc_started_msg": "frpc.ini 已更新，frpc.exe 已启动。",
+        "copy_address": "复制外网地址",
+        "address_copied": "外网地址已复制",
         # frpc
         "frpc_not_found": "未找到 frpc.exe",
         "frpc_ini_not_found": "未找到 frpc.ini",
@@ -216,6 +218,8 @@ LANGUAGES = {
         "tunnel_enabled_title": "Tunnel Enabled",
         "tunnel_enabled_msg": "Tunnel Enabled Successfully",
         "frpc_started_msg": "frpc.ini has been updated and frpc.exe started.",
+        "copy_address": "Copy External Address",
+        "address_copied": "External address copied",
         "frpc_not_found": "frpc.exe not found",
         "frpc_ini_not_found": "frpc.ini not found",
         "frpc_started": "frpc started",
@@ -410,8 +414,9 @@ class TunnelEnableDialog(tk.Toplevel):
     def __init__(self, parent, tunnel, enable_data, tr_func):
         super().__init__(parent)
         self.tr = tr_func
+        self.enable_data = enable_data
         self.title(self.tr("tunnel_enabled_title"))
-        self.geometry("500x400")
+        self.geometry("500x450")
         self.resizable(True, True)
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
@@ -434,7 +439,24 @@ class TunnelEnableDialog(tk.Toplevel):
         )
         status_label.pack(pady=5)
 
+        # External address display + copy button
+        ext_addr = f"{enable_data.get('ftps_ip', '')}:{enable_data.get('remote_port', '')}"
+        addr_frame = ttk.Frame(frame)
+        addr_frame.pack(pady=10)
+        ttk.Label(addr_frame, text=ext_addr,
+                  font=("", 12, "bold"), foreground="blue").pack()
+        self.copy_btn = ttk.Button(addr_frame, text=self.tr("copy_address"),
+                                   command=self._copy_address)
+        self.copy_btn.pack(pady=5)
+
         ttk.Button(frame, text=self.tr("ok"), command=self.destroy).pack(pady=10)
+
+    def _copy_address(self):
+        ext_addr = f"{self.enable_data.get('ftps_ip', '')}:{self.enable_data.get('remote_port', '')}"
+        self.clipboard_clear()
+        self.clipboard_append(ext_addr)
+        self.copy_btn.configure(text=self.tr("address_copied"))
+        self.after(2000, lambda: self.copy_btn.configure(text=self.tr("copy_address")))
 
 
 # ============================================================
@@ -452,6 +474,7 @@ class FrpLoginApp:
         self.current_user_id = None
         self.current_user_info = None
         self._refresh_timer = None
+        self._cooldown_sec = 0
 
         style = ttk.Style()
         style.theme_use("clam")
@@ -587,8 +610,9 @@ class FrpLoginApp:
         )
         btn_frame = ttk.Frame(reg_tab)
         btn_frame.grid(row=4, column=1, pady=10, sticky=tk.E)
-        ttk.Button(btn_frame, text=self._tr("send_code"),
-                   command=self._send_code).pack(side=tk.LEFT, padx=5)
+        self.send_code_btn = ttk.Button(btn_frame, text=self._tr("send_code"),
+                                         command=self._send_code)
+        self.send_code_btn.pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text=self._tr("register_btn"),
                    command=self._register).pack(side=tk.LEFT, padx=5)
 
@@ -661,6 +685,7 @@ class FrpLoginApp:
         if not email:
             self._show_error("error", self._tr("all_fields_required"))
             return
+        self.send_code_btn.configure(state=tk.DISABLED)
         threading.Thread(target=self._send_code_thread,
                          args=(email,), daemon=True).start()
 
@@ -668,14 +693,27 @@ class FrpLoginApp:
         try:
             resp = self.api.register_send_code(email)
             if resp.status_code == 200:
-                self.root.after(
-                    0, lambda: self._show_info("success", self._tr("code_sent"))
-                )
+                self.root.after(0, lambda: self._show_info("success", self._tr("code_sent")))
+                self.root.after(0, self._start_send_code_cooldown)
             else:
+                self.root.after(0, lambda: self.send_code_btn.configure(state=tk.NORMAL))
                 err = resp.json().get("error", self._tr("error"))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
+            self.root.after(0, lambda: self.send_code_btn.configure(state=tk.NORMAL))
             self.root.after(0, lambda: self._show_error("error", str(e)))
+
+    def _start_send_code_cooldown(self):
+        self._cooldown_sec = 60
+        self._update_cooldown()
+
+    def _update_cooldown(self):
+        if self._cooldown_sec <= 0:
+            self.send_code_btn.configure(text=self._tr("send_code"), state=tk.NORMAL)
+            return
+        self.send_code_btn.configure(text=f"{self._tr('send_code')} ({self._cooldown_sec}s)")
+        self._cooldown_sec -= 1
+        self.root.after(1000, self._update_cooldown)
 
     def _register(self):
         email = self.reg_email_var.get().strip()
