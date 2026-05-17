@@ -502,17 +502,37 @@ def start_all_processes(cfg):
         fp_multiuser_bin = FRPS_DIR / "fp-multiuser"
         env = {}
         if fp_multiuser_bin.exists():
-            env["FP_MULTIUSER_BIN"] = str(fp_multiuser_bin)
-        start_subprocess(
+            if not os.access(str(fp_multiuser_bin), os.X_OK):
+                logger.error(
+                    f"fp-multiuser binary at {fp_multiuser_bin} is not executable. "
+                    f"Run: chmod +x {fp_multiuser_bin}"
+                )
+            else:
+                env["FP_MULTIUSER_BIN"] = str(fp_multiuser_bin)
+        proc = start_subprocess(
             "fp-multiuser",
             [sys.executable, str(FP_MULTIUSER_PY)],
             cwd=str(FRPS_DIR),
             env=env,
         )
+        # Wait briefly and check if still alive
+        if proc:
+            time.sleep(1)
+            if proc.poll() is not None:
+                logger.error(
+                    f"fp-multiuser.py exited early (code {proc.poll()}). "
+                    f"The fp-multiuser binary may not be executable. "
+                    f"Run: chmod +x {fp_multiuser_bin}"
+                )
     else:
         logger.warning(f"fp-multiuser.py not found at {FP_MULTIUSER_PY}")
 
     if FRPS_BIN.exists() and FRPS_INI.exists():
+        if not os.access(str(FRPS_BIN), os.X_OK):
+            logger.error(
+                f"frps binary at {FRPS_BIN} is not executable. "
+                f"Run: chmod +x {FRPS_BIN}"
+            )
         start_subprocess("frps", [str(FRPS_BIN), "-c", str(FRPS_INI)])
     else:
         logger.warning("frps binary or config not found")
