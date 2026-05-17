@@ -1464,7 +1464,7 @@ class FrpLoginApp:
             pass
 
     def _logout(self):
-        threading.Thread(target=self._disable_all_tunnels, daemon=True).start()
+        self._disable_all_tunnels()
         stop_frpc()
         self.current_user_id = None
         self.current_user_info = None
