@@ -111,9 +111,10 @@ def setup_config():
     cfg["https"] = https
 
     fp = {}
-    fp["api_url"] = input(
-        "fp-multiuser API URL (default http://127.0.0.1:8080): "
-    ).strip() or "http://127.0.0.1:8080"
+    fp["api_port"] = int(input(
+        "fp-multiuser API Port (default 8080): "
+    ).strip() or "8080")
+    fp["api_url"] = f"http://127.0.0.1:{fp['api_port']}"
     cfg["fp_multiuser"] = fp
 
     cfg["configured"] = True
@@ -509,6 +510,9 @@ def start_all_processes(cfg):
                 )
             else:
                 env["FP_MULTIUSER_BIN"] = str(fp_multiuser_bin)
+        fp_cfg = cfg.get("fp_multiuser", {})
+        if "api_port" in fp_cfg:
+            env["API_PORT"] = str(fp_cfg["api_port"])
         proc = start_subprocess(
             "fp-multiuser",
             [sys.executable, str(FP_MULTIUSER_PY)],
