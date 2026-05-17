@@ -135,6 +135,16 @@ LANGUAGES = {
         "start_frpc_failed": "启动 frpc 失败",
         # Tunnel disable
         "tunnel_disabled": "隧道已禁用",
+        # Remember password
+        "remember_password": "记住密码",
+        # Reset password
+        "reset_password": "重置密码",
+        "new_password": "新密码:",
+        "reset_btn": "重置密码",
+        "reset_code_sent": "验证码已发送到您的邮箱",
+        "password_reset_success": "密码重置成功",
+        "reset_failed": "重置失败",
+        "send_reset_code": "发送验证码",
     },
     LANG_EN: {
         "lang_name": "English",
@@ -228,6 +238,14 @@ LANGUAGES = {
         "frpc_not_running": "frpc not running",
         "start_frpc_failed": "Failed to start frpc",
         "tunnel_disabled": "Tunnel disabled",
+        "remember_password": "Remember Password",
+        "reset_password": "Reset Password",
+        "new_password": "New Password:",
+        "reset_btn": "Reset Password",
+        "reset_code_sent": "Verification code sent to your email",
+        "password_reset_success": "Password reset successfully",
+        "reset_failed": "Reset failed",
+        "send_reset_code": "Send Code",
     },
 }
 
@@ -287,8 +305,22 @@ class ApiClient:
         return self._post("/api/auth/register", {"email": email})
 
     def register_verify(self, email, code, password):
-        return self._post("/api/auth/register/verify", {
+        resp = self._post("/api/auth/register/verify", {
             "email": email, "code": code, "password": password,
+        })
+        if resp.status_code == 200:
+            data = resp.json()
+            self.session_token = data.get("session_token", "")
+            self.cfg["session_token"] = self.session_token
+            save_client_config(self.cfg)
+        return resp
+
+    def reset_send_code(self, email):
+        return self._post("/api/auth/reset-password/send-code", {"email": email})
+
+    def reset_password(self, email, code, new_password):
+        return self._post("/api/auth/reset-password", {
+            "email": email, "code": code, "new_password": new_password,
         })
 
     def login(self, email, password):
@@ -475,6 +507,7 @@ class FrpLoginApp:
         self.current_user_info = None
         self._refresh_timer = None
         self._cooldown_sec = 0
+        self._reset_cooldown_sec = 0
 
         style = ttk.Style()
         style.theme_use("clam")
@@ -556,30 +589,39 @@ class FrpLoginApp:
                   foreground="gray").grid(row=1, column=0, columnspan=3,
                                           sticky=tk.W, padx=5)
 
-        # Login/Register Notebook
+        # Login/Register/Reset Password Notebook
         notebook = ttk.Notebook(self.login_frame)
         notebook.pack(fill=tk.BOTH, expand=True, pady=10)
 
-        # Login tab
+        # ---------- Login tab ----------
         login_tab = ttk.Frame(notebook, padding=20)
         notebook.add(login_tab, text=self._tr("login"))
+        cfg = load_client_config()
         ttk.Label(login_tab, text=self._tr("email")).grid(
             row=0, column=0, sticky=tk.W, pady=5
         )
-        self.login_email_var = tk.StringVar()
+        saved_email = cfg.get("saved_email", "") if cfg.get("remember_pwd") else ""
+        self.login_email_var = tk.StringVar(value=saved_email)
         ttk.Entry(login_tab, textvariable=self.login_email_var, width=35).grid(
             row=0, column=1, pady=5
         )
         ttk.Label(login_tab, text=self._tr("password")).grid(
             row=1, column=0, sticky=tk.W, pady=5
         )
-        self.login_pass_var = tk.StringVar()
+        saved_password = cfg.get("saved_password", "") if cfg.get("remember_pwd") else ""
+        self.login_pass_var = tk.StringVar(value=saved_password)
         ttk.Entry(login_tab, textvariable=self.login_pass_var, show="*",
                   width=35).grid(row=1, column=1, pady=5)
+        # Remember password checkbox
+        self.login_remember_var = tk.BooleanVar(value=cfg.get("remember_pwd", False))
+        ttk.Checkbutton(login_tab, text=self._tr("remember_password"),
+                        variable=self.login_remember_var).grid(
+            row=2, column=0, sticky=tk.W, pady=5
+        )
         ttk.Button(login_tab, text=self._tr("login_btn"),
-                   command=self._login).grid(row=2, column=1, pady=15, sticky=tk.E)
+                   command=self._login).grid(row=2, column=1, pady=5, sticky=tk.E)
 
-        # Register tab
+        # ---------- Register tab ----------
         reg_tab = ttk.Frame(notebook, padding=20)
         notebook.add(reg_tab, text=self._tr("register"))
         ttk.Label(reg_tab, text=self._tr("email")).grid(
@@ -611,10 +653,49 @@ class FrpLoginApp:
         btn_frame = ttk.Frame(reg_tab)
         btn_frame.grid(row=4, column=1, pady=10, sticky=tk.E)
         self.send_code_btn = ttk.Button(btn_frame, text=self._tr("send_code"),
-                                         command=self._send_code)
+                                        command=self._send_code)
         self.send_code_btn.pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text=self._tr("register_btn"),
                    command=self._register).pack(side=tk.LEFT, padx=5)
+
+        # ---------- Reset Password tab ----------
+        reset_tab = ttk.Frame(notebook, padding=20)
+        notebook.add(reset_tab, text=self._tr("reset_password"))
+        ttk.Label(reset_tab, text=self._tr("email")).grid(
+            row=0, column=0, sticky=tk.W, pady=5
+        )
+        self.reset_email_var = tk.StringVar()
+        ttk.Entry(reset_tab, textvariable=self.reset_email_var, width=35).grid(
+            row=0, column=1, pady=5
+        )
+        ttk.Label(reset_tab, text=self._tr("code")).grid(
+            row=1, column=0, sticky=tk.W, pady=5
+        )
+        self.reset_code_var = tk.StringVar()
+        ttk.Entry(reset_tab, textvariable=self.reset_code_var, width=20).grid(
+            row=1, column=1, sticky=tk.W, pady=5
+        )
+        ttk.Label(reset_tab, text=self._tr("new_password")).grid(
+            row=2, column=0, sticky=tk.W, pady=5
+        )
+        self.reset_pass_var = tk.StringVar()
+        ttk.Entry(reset_tab, textvariable=self.reset_pass_var, show="*",
+                  width=35).grid(row=2, column=1, pady=5)
+        ttk.Label(reset_tab, text=self._tr("confirm_password")).grid(
+            row=3, column=0, sticky=tk.W, pady=5
+        )
+        self.reset_confirm_var = tk.StringVar()
+        ttk.Entry(reset_tab, textvariable=self.reset_confirm_var, show="*",
+                  width=35).grid(row=3, column=1, pady=5)
+        reset_btn_frame = ttk.Frame(reset_tab)
+        reset_btn_frame.grid(row=4, column=1, pady=10, sticky=tk.E)
+        self.reset_send_code_btn = ttk.Button(
+            reset_btn_frame, text=self._tr("send_reset_code"),
+            command=self._send_reset_code
+        )
+        self.reset_send_code_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Button(reset_btn_frame, text=self._tr("reset_btn"),
+                   command=self._reset_password).pack(side=tk.LEFT, padx=5)
 
         # Status bar
         self.status_var = tk.StringVar(value=self._tr("connect_hint"))
@@ -655,6 +736,7 @@ class FrpLoginApp:
         threading.Thread(target=self._auto_login_thread, daemon=True).start()
 
     def _auto_login_thread(self):
+        # Try saved session token first
         try:
             resp = self.api.get_user_info()
             if resp.status_code == 200:
@@ -662,10 +744,18 @@ class FrpLoginApp:
                 self.current_user_id = data["user_id"]
                 self.current_user_info = data
                 self.root.after(0, self._show_main)
-            else:
-                self.api.logout()
+                return
         except requests.RequestException:
-            self.api.logout()
+            pass
+        # If session expired but remember_pwd is on, auto-login
+        cfg = load_client_config()
+        if cfg.get("remember_pwd") and cfg.get("saved_email") and cfg.get("saved_password"):
+            self.api.base_url = cfg.get("server_url", "")
+            self.root.after(0, lambda: [
+                self.login_email_var.set(cfg["saved_email"]),
+                self.login_pass_var.set(cfg["saved_password"]),
+            ])
+            self._login()
 
     def _show_error(self, title_key, message):
         """Show error messagebox with translated title."""
@@ -745,6 +835,74 @@ class FrpLoginApp:
         except requests.RequestException as e:
             self.root.after(0, lambda: self._show_error("error", str(e)))
 
+    # ---- Reset Password ----
+    def _send_reset_code(self):
+        email = self.reset_email_var.get().strip()
+        if not email:
+            self._show_error("error", self._tr("all_fields_required"))
+            return
+        self.reset_send_code_btn.configure(state=tk.DISABLED)
+        threading.Thread(target=self._send_reset_code_thread,
+                         args=(email,), daemon=True).start()
+
+    def _send_reset_code_thread(self, email):
+        try:
+            resp = self.api.reset_send_code(email)
+            if resp.status_code == 200:
+                self.root.after(0, lambda: self._show_info("success", self._tr("reset_code_sent")))
+                self.root.after(0, self._start_reset_code_cooldown)
+            else:
+                self.root.after(0, lambda: self.reset_send_code_btn.configure(state=tk.NORMAL))
+                err = resp.json().get("error", self._tr("error"))
+                self.root.after(0, lambda: self._show_error("error", err))
+        except requests.RequestException as e:
+            self.root.after(0, lambda: self.reset_send_code_btn.configure(state=tk.NORMAL))
+            self.root.after(0, lambda: self._show_error("error", str(e)))
+
+    def _start_reset_code_cooldown(self):
+        self._reset_cooldown_sec = 60
+        self._update_reset_cooldown()
+
+    def _update_reset_cooldown(self):
+        if self._reset_cooldown_sec <= 0:
+            self.reset_send_code_btn.configure(text=self._tr("send_reset_code"), state=tk.NORMAL)
+            return
+        self.reset_send_code_btn.configure(text=f"{self._tr('send_reset_code')} ({self._reset_cooldown_sec}s)")
+        self._reset_cooldown_sec -= 1
+        self.root.after(1000, self._update_reset_cooldown)
+
+    def _reset_password(self):
+        email = self.reset_email_var.get().strip()
+        code = self.reset_code_var.get().strip()
+        password = self.reset_pass_var.get()
+        confirm = self.reset_confirm_var.get()
+        if not email or not code or not password:
+            self._show_error("error", self._tr("all_fields_required"))
+            return
+        if password != confirm:
+            self._show_error("error", self._tr("passwords_not_match"))
+            return
+        if len(password) < 6:
+            self._show_error("error", self._tr("password_too_short"))
+            return
+        threading.Thread(target=self._reset_password_thread,
+                         args=(email, code, password), daemon=True).start()
+
+    def _reset_password_thread(self, email, code, new_password):
+        try:
+            resp = self.api.reset_password(email, code, new_password)
+            if resp.status_code == 200:
+                # Clear fields and show success
+                self.reset_code_var.set("")
+                self.reset_pass_var.set("")
+                self.reset_confirm_var.set("")
+                self.root.after(0, lambda: self._show_info("success", self._tr("password_reset_success")))
+            else:
+                err = resp.json().get("error", self._tr("reset_failed"))
+                self.root.after(0, lambda: self._show_error("error", err))
+        except requests.RequestException as e:
+            self.root.after(0, lambda: self._show_error("error", str(e)))
+
     def _login(self):
         email = self.login_email_var.get().strip()
         password = self.login_pass_var.get()
@@ -760,6 +918,16 @@ class FrpLoginApp:
             if resp.status_code == 200:
                 data = resp.json()
                 self.current_user_id = data["user_id"]
+                # Save remember password settings
+                cfg = load_client_config()
+                cfg["remember_pwd"] = self.login_remember_var.get()
+                if self.login_remember_var.get():
+                    cfg["saved_email"] = email
+                    cfg["saved_password"] = password
+                else:
+                    cfg.pop("saved_email", None)
+                    cfg.pop("saved_password", None)
+                save_client_config(cfg)
                 self.root.after(0, self._show_main)
             else:
                 err = resp.json().get("error", self._tr("login_failed"))

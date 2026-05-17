@@ -361,13 +361,14 @@ class EmailSender:
         self.cfg = smtp_cfg
 
     def send_verification_code(self, to_email, code):
-        subject = "FRP Login Tool - Verification Code"
+        subject = "FRP 内网穿透 - 验证码"
         body = f"""
         <html><body>
-        <h2>FRP Login Tool</h2>
-        <p>Your verification code:</p>
+        <h2>FRP 内网穿透工具</h2>
+        <p>您的验证码为：</p>
         <h1 style="color:#4CAF50;font-size:32px;letter-spacing:5px;">{code}</h1>
-        <p>Expires in 10 minutes.</p>
+        <p>验证码有效期为 10 分钟，请尽快完成操作。</p>
+        <p>如果这不是您本人的操作，请忽略此邮件。</p>
         </body></html>
         """
         return self._send(to_email, subject, body)
@@ -635,6 +636,69 @@ def create_app(db, email_sender, token_mgr, cfg):
             "status": "ok", "session_token": token, "user_id": user_id,
             "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None,
         })
+
+    @app.route("/api/auth/reset-password/send-code", methods=["POST"])
+    def reset_send_code():
+        data = request.get_json()
+        if not data or "email" not in data:
+            return jsonify({"error": "Email required"}), 400
+        email = data["email"].strip().lower()
+        user = db.get_user_by_email(email)
+        if not user:
+            return jsonify({"error": "Email not registered"}), 404
+        # Check cooldown
+        with verification_lock:
+            existing = verification_codes.get(email)
+            if existing and existing["cooldown_until"] > datetime.now():
+                remaining = int((existing["cooldown_until"] - datetime.now()).total_seconds())
+                return jsonify({"error": f"Please wait {remaining}s"}), 429
+        code = "".join(random.choices(string.digits, k=6))
+        now = datetime.now()
+        with verification_lock:
+            verification_codes[email] = {
+                "code": code,
+                "expires_at": now + timedelta(minutes=10),
+                "cooldown_until": now + timedelta(seconds=60),
+            }
+        ok, err = email_sender.send_verification_code(email, code)
+        if ok:
+            return jsonify({"status": "ok", "message": "Verification code sent"})
+        with verification_lock:
+            verification_codes.pop(email, None)
+        return jsonify({"error": f"Failed to send email: {err}"}), 500
+
+    @app.route("/api/auth/reset-password", methods=["POST"])
+    def reset_password():
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body required"}), 400
+        email = data.get("email", "").strip().lower()
+        code = data.get("code", "").strip()
+        new_password = data.get("new_password", "").strip()
+        if not email or not code or not new_password:
+            return jsonify({"error": "email, code, new_password required"}), 400
+        if len(new_password) < 6:
+            return jsonify({"error": "Password must be >= 6 characters"}), 400
+        # Verify in-memory code
+        with verification_lock:
+            stored = verification_codes.get(email)
+            if not stored:
+                return jsonify({"error": "No verification code requested"}), 400
+            if stored["code"] != code:
+                return jsonify({"error": "Invalid code"}), 400
+            if stored["expires_at"] < datetime.now():
+                verification_codes.pop(email, None)
+                return jsonify({"error": "Code expired"}), 400
+            verification_codes.pop(email, None)
+        # Update password
+        pw_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        user = db.get_user_by_email(email)
+        if not user:
+            return jsonify({"error": "Email not registered"}), 404
+        db._execute(
+            "UPDATE users SET password=%s WHERE email=%s", (pw_hash, email)
+        )
+        return jsonify({"status": "ok", "message": "Password reset successfully"})
 
     @app.route("/api/auth/login", methods=["POST"])
     def login():
