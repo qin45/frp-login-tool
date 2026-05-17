@@ -4,6 +4,8 @@ FRP Login Tool - Client
 GUI desktop client for managing FRP tunnels with remote server.
 Supports Chinese and English languages.
 """
+import hashlib
+import io
 import json
 import signal
 import subprocess
@@ -12,6 +14,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
+import zipfile
 
 import requests
 import urllib3
@@ -152,6 +155,15 @@ LANGUAGES = {
         "activation_success": "激活成功",
         "activation_failed": "激活失败",
         "new_expiry": "新的到期时间",
+        # Core file download
+        "missing_core_file": "缺失核心文件",
+        "missing_core_file_prompt": "缺失核心文件，是否自动下载？",
+        "downloading": "正在下载核心文件...",
+        "verifying": "正在校验文件完整性...",
+        "extracting": "正在解压...",
+        "core_download_success": "核心文件下载成功\n若杀毒软件报毒请添加排除项，本软件及frp核心完全开源，请放心使用",
+        "core_download_failed": "核心文件下载失败",
+        "sha256_mismatch": "文件校验失败，下载文件可能已被篡改",
     },
     LANG_EN: {
         "lang_name": "English",
@@ -260,6 +272,15 @@ LANGUAGES = {
         "activation_success": "Activation successful",
         "activation_failed": "Activation failed",
         "new_expiry": "New expiration",
+        # Core file download
+        "missing_core_file": "Missing Core File",
+        "missing_core_file_prompt": "Missing core file. Download automatically?",
+        "downloading": "Downloading core file...",
+        "verifying": "Verifying file integrity...",
+        "extracting": "Extracting...",
+        "core_download_success": "Core file downloaded successfully\nIf your antivirus flags it, please add an exclusion.\nThis software and frp core are fully open source.",
+        "core_download_failed": "Core file download failed",
+        "sha256_mismatch": "SHA256 mismatch - the downloaded file may have been tampered with",
     },
 }
 
@@ -537,6 +558,10 @@ class FrpLoginApp:
 
         self.login_frame = None
         self.main_frame = None
+
+        # Check / auto-download frpc.exe before showing UI
+        self.root.after(100, self._ensure_frpc_core)
+
         self._show_login()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -568,6 +593,79 @@ class FrpLoginApp:
     def _on_close(self):
         stop_frpc()
         self.root.destroy()
+
+    def _ensure_frpc_core(self):
+        """Check if frpc.exe exists; if not, prompt to download and extract it."""
+        if FRPC_EXE.exists():
+            return True
+        want = messagebox.askyesno(
+            self._tr("missing_core_file"),
+            self._tr("missing_core_file_prompt"),
+        )
+        if not want:
+            return False
+
+        url = "https://github.com/fatedier/frp/releases/download/v0.68.1/frp_0.68.1_windows_amd64.zip"
+        expected_hash = "74d753a681d2c07931d150b21ed294c224abe36053f67393cf46223f53bc871c"
+
+        # Download
+        self.status_var.set(self._tr("downloading"))
+        self.root.update()
+        try:
+            resp = requests.get(url, stream=True, timeout=120)
+            resp.raise_for_status()
+            data = resp.content
+        except requests.RequestException as e:
+            messagebox.showerror(self._tr("core_download_failed"), str(e))
+            return False
+
+        # Verify SHA256
+        self.status_var.set(self._tr("verifying"))
+        self.root.update()
+        actual_hash = hashlib.sha256(data).hexdigest()
+        if actual_hash.lower() != expected_hash.lower():
+            messagebox.showerror(
+                self._tr("core_download_failed"),
+                self._tr("sha256_mismatch"),
+            )
+            return False
+
+        # Extract frpc.exe from zip in memory
+        self.status_var.set(self._tr("extracting"))
+        self.root.update()
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                # Find frpc.exe in the zip (it's inside a top-level folder)
+                frpc_path = next(
+                    (n for n in zf.namelist() if n.endswith("frpc.exe")),
+                    None,
+                )
+                if not frpc_path:
+                    messagebox.showerror(
+                        self._tr("core_download_failed"),
+                        "frpc.exe not found in archive",
+                    )
+                    return False
+                FRPC_DIR.mkdir(parents=True, exist_ok=True)
+                with zf.open(frpc_path) as src, open(FRPC_EXE, "wb") as dst:
+                    dst.write(src.read())
+        except zipfile.BadZipFile:
+            messagebox.showerror(
+                self._tr("core_download_failed"),
+                "Invalid zip file",
+            )
+            return False
+
+        # Create frpc.ini if not present
+        if not FRPC_INI.exists():
+            FRPC_DIR.mkdir(parents=True, exist_ok=True)
+            FRPC_INI.write_text("[common]\n", encoding="utf-8")
+
+        messagebox.showinfo(
+            self._tr("success"),
+            self._tr("core_download_success"),
+        )
+        return True
 
     # ============================
     # Login / Register Screen
