@@ -434,6 +434,7 @@ def start_frpc():
                 cwd=str(FRPC_DIR),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
 
             def log_output():
@@ -630,7 +631,7 @@ class FrpLoginApp:
             self._refresh_timer = None
 
     def _on_close(self):
-        threading.Thread(target=self._disable_all_tunnels, daemon=True).start()
+        self._disable_all_tunnels()
         stop_frpc()
         self.root.destroy()
 
