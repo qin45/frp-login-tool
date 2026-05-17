@@ -570,6 +570,45 @@ class FrpLoginApp:
         """Translate a key to the current language."""
         return LANGUAGES.get(self.lang, LANGUAGES[LANG_ZH]).get(key, key)
 
+    def _tr_error(self, msg):
+        """Translate known server error messages for Chinese mode."""
+        if self.lang != LANG_ZH or not msg:
+            return msg
+        _err_map = {
+            "Invalid email or password": "邮箱或密码错误",
+            "Email already registered": "该邮箱已被注册",
+            "Password must be >= 6 characters": "密码长度不能少于6位",
+            "No verification code requested": "未请求验证码",
+            "Invalid verification code": "验证码错误",
+            "Verification code expired": "验证码已过期",
+            "Email not registered": "该邮箱未注册",
+            "Maximum 10 tunnels per user": "每用户最多创建10条隧道",
+            "No available ports": "没有可用端口",
+            "Tunnel not found": "隧道不存在",
+            "Tunnel already enabled": "隧道已启用",
+            "Tunnel is not enabled": "隧道未启用",
+            "Account has expired": "账户已到期",
+            "Disable the tunnel before deleting": "请先禁用隧道再删除",
+            "Failed to get token from fp-multiuser": "获取令牌失败（fp-multiuser 未运行）",
+            "Invalid or already used activation code": "无效的激活码或已被使用",
+            "Activation code required": "请输入激活码",
+            "Unauthorized": "未授权，请重新登录",
+            "email, code, password required": "邮箱、验证码和密码为必填项",
+            "email, code, new_password required": "邮箱、验证码和新密码为必填项",
+            "Email required": "请输入邮箱",
+            "Request body required": "请求数据为空",
+            "name and local_port required": "名称和端口为必填项",
+            "local_port must be integer": "端口必须为数字",
+            "User not found": "用户不存在",
+        }
+        # Try exact match first, then partial match
+        if msg in _err_map:
+            return _err_map[msg]
+        for en, zh in _err_map.items():
+            if en in msg:
+                return msg.replace(en, zh)
+        return msg
+
     def _toggle_lang(self):
         """Switch between Chinese and English, then rebuild the UI."""
         self.lang = LANG_EN if self.lang == LANG_ZH else LANG_ZH
@@ -905,7 +944,7 @@ class FrpLoginApp:
                 self.root.after(0, self._start_send_code_cooldown)
             else:
                 self.root.after(0, lambda: self.send_code_btn.configure(state=tk.NORMAL))
-                err = resp.json().get("error", self._tr("error"))
+                err = self._tr_error(resp.json().get("error", self._tr("error")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self.send_code_btn.configure(state=tk.NORMAL))
@@ -948,7 +987,7 @@ class FrpLoginApp:
                 self.current_user_id = data["user_id"]
                 self.root.after(0, self._show_main)
             else:
-                err = resp.json().get("error", self._tr("registration_failed"))
+                err = self._tr_error(resp.json().get("error", self._tr("registration_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self._show_error("error", str(e)))
@@ -971,7 +1010,7 @@ class FrpLoginApp:
                 self.root.after(0, self._start_reset_code_cooldown)
             else:
                 self.root.after(0, lambda: self.reset_send_code_btn.configure(state=tk.NORMAL))
-                err = resp.json().get("error", self._tr("error"))
+                err = self._tr_error(resp.json().get("error", self._tr("error")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self.reset_send_code_btn.configure(state=tk.NORMAL))
@@ -1016,7 +1055,7 @@ class FrpLoginApp:
                 self.reset_confirm_var.set("")
                 self.root.after(0, lambda: self._show_info("success", self._tr("password_reset_success")))
             else:
-                err = resp.json().get("error", self._tr("reset_failed"))
+                err = self._tr_error(resp.json().get("error", self._tr("reset_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self._show_error("error", str(e)))
@@ -1048,7 +1087,7 @@ class FrpLoginApp:
                 save_client_config(cfg)
                 self.root.after(0, self._show_main)
             else:
-                err = resp.json().get("error", self._tr("login_failed"))
+                err = self._tr_error(resp.json().get("error", self._tr("login_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self._show_error("error", str(e)))
@@ -1288,7 +1327,7 @@ class FrpLoginApp:
                         self.root.after(0, lambda: [dialog.destroy(),
                                                      self._refresh_data()])
                     else:
-                        err = resp.json().get("error", self._tr("error"))
+                        err = self._tr_error(resp.json().get("error", self._tr("error")))
                         self.root.after(0, lambda: err_var.set(err))
                 except requests.RequestException as e:
                     self.root.after(0, lambda: err_var.set(str(e)))
@@ -1321,7 +1360,7 @@ class FrpLoginApp:
         try:
             resp = self.api.enable_tunnel(tunnel["id"])
             if resp.status_code != 200:
-                err = resp.json().get("error", self._tr("enable_failed"))
+                err = self._tr_error(resp.json().get("error", self._tr("enable_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
                 return
             data = resp.json()
@@ -1364,7 +1403,7 @@ class FrpLoginApp:
         try:
             resp = self.api.disable_tunnel(tunnel["id"])
             if resp.status_code != 200:
-                err = resp.json().get("error", self._tr("disable_failed"))
+                err = self._tr_error(resp.json().get("error", self._tr("disable_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
                 return
             _, msg = stop_frpc()
@@ -1395,7 +1434,7 @@ class FrpLoginApp:
             if resp.status_code == 200:
                 self.root.after(0, self._refresh_data)
             else:
-                err = resp.json().get("error", self._tr("delete_failed"))
+                err = self._tr_error(resp.json().get("error", self._tr("delete_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self._show_error("error", str(e)))
@@ -1437,7 +1476,7 @@ class FrpLoginApp:
                             self._refresh_data(),
                         ])
                     else:
-                        err = resp.json().get("error", self._tr("activation_failed"))
+                        err = self._tr_error(resp.json().get("error", self._tr("activation_failed")))
                         self.root.after(0, lambda: err_var.set(err))
                 except requests.RequestException as e:
                     self.root.after(0, lambda: err_var.set(str(e)))
