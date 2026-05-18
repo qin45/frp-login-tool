@@ -75,6 +75,71 @@ def save_config(cfg):
         json.dump(cfg, f, indent=4, ensure_ascii=False)
 
 
+def migrate_config(cfg):
+    """Fill in missing config keys with defaults and log what was added."""
+    defaults = {
+        "smtp": {
+            "server": "",
+            "port": 465,
+            "username": "",
+            "password": "",
+            "from_email": "",
+        },
+        "ftps": {
+            "ip": "",
+            "port": 7000,
+            "port_range_start": 20000,
+            "port_range_end": 21000,
+        },
+        "mysql": {
+            "host": "localhost",
+            "port": 3306,
+            "user": "",
+            "password": "",
+            "database": "frp_login",
+        },
+        "https": {
+            "port": 8443,
+            "cert_file": "",
+            "key_file": "",
+        },
+        "fp_multiuser": {
+            "api_port": 8080,
+            "api_url": "http://127.0.0.1:8080",
+        },
+        "management_api": {
+            "enabled": False,
+            "port": 8444,
+            "api_key": "",
+            "allowed_ips": ["127.0.0.1"],
+        },
+    }
+
+    added = []
+
+    for section, keys in defaults.items():
+        if section not in cfg:
+            cfg[section] = {}
+            added.append(f"  [{section}] (entire section)")
+        for key, val in keys.items():
+            if key not in cfg[section]:
+                cfg[section][key] = val
+                added.append(f"  [{section}] {key}")
+
+    if "configured" not in cfg:
+        cfg["configured"] = True
+        added.append("  configured")
+
+    if added:
+        logger.info("Config migration: missing keys filled with defaults:")
+        for line in added:
+            logger.info(line)
+        save_config(cfg)
+        logger.info(f"Config auto-updated with {len(added)} missing key(s)")
+
+    return cfg
+
+
 def setup_config():
     """Interactive CLI setup for first-time configuration."""
     print("=" * 60)
@@ -1290,6 +1355,7 @@ def cmd_start(args=None):
     if not cfg.get("configured"):
         print("Not configured. Run 'python main.py setup' first.")
         sys.exit(1)
+    cfg = migrate_config(cfg)
     try:
         ftps = cfg.get("ftps", {})
         db = Database(
