@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRP 管理后台 - 隧道管理</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+body { background: #f0f2f5; }
+.navbar { background: #1a73e8 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.navbar .nav-link { color: rgba(255,255,255,0.85) !important; padding: 0.5rem 1rem !important; border-radius: 6px; margin: 0 2px; }
+.navbar .nav-link:hover, .navbar .nav-link.active { background: rgba(255,255,255,0.15); color: #fff !important; }
+.navbar .nav-link i { margin-right: 6px; }
+.page-header { padding: 1.5rem 0 1rem; }
+.page-header h3 { margin: 0; font-weight: 600; }
+.card { border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); border: none; }
+.table th { background: #f8f9fa; border-top: none; font-weight: 600; }
+.btn-sm i { margin-right: 4px; }
+.modal-header { background: #f8f9fa; border-radius: 10px 10px 0 0; }
+</style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container">
+    <span class="navbar-brand fw-bold"><i class="fas fa-server me-2"></i>FRP 管理后台</span>
+    <div class="navbar-nav">
+      <a class="nav-link" href="/users"><i class="fas fa-users"></i>用户管理</a>
+      <a class="nav-link active" href="/tunnels"><i class="fas fa-network-wired"></i>隧道管理</a>
+      <a class="nav-link" href="/codes"><i class="fas fa-key"></i>激活码</a>
+      <a class="nav-link" href="/settings"><i class="fas fa-cog"></i>系统设置</a>
+    </div>
+    <div class="d-flex">
+      <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i>退出</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header d-flex justify-content-between align-items-center">
+    <h3><i class="fas fa-network-wired me-2 text-primary"></i>隧道管理</h3>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+      <i class="fas fa-plus"></i> 创建隧道
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>用户</th>
+              <th>邮箱</th>
+              <th>名称</th>
+              <th>类型</th>
+              <th>本地地址</th>
+              <th>本地端口</th>
+              <th>远程端口</th>
+              <th>状态</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in tunnels %}
+            <tr>
+              <td>{{ t.id }}</td>
+              <td><span class="badge bg-secondary">{{ t.user_id }}</span></td>
+              <td>{{ t.email or '' }}</td>
+              <td>{{ t.name }}</td>
+              <td><span class="badge bg-info">{{ t.tunnel_type }}</span></td>
+              <td>{{ t.local_ip }}</td>
+              <td>{{ t.local_port }}</td>
+              <td>{{ t.remote_port }}</td>
+              <td>{% if t.enabled %}<span class="badge bg-success">启用</span>{% else %}<span class="badge bg-secondary">禁用</span>{% endif %}</td>
+              <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else 'N/A' }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="editTunnel({{ t.id }},'{{ t.name }}','{{ t.tunnel_type }}','{{ t.local_ip }}',{{ t.local_port }},{{ t.remote_port or 'null' }},'{{ t.user_id }}')" data-bs-toggle="modal" data-bs-target="#editModal">
+                  <i class="fas fa-edit"></i>编辑
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteTunnel({{ t.id }})" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                  <i class="fas fa-trash"></i>删除
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="11" class="text-center text-muted py-4">暂无隧道数据</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">创建隧道</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="createForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">所属用户 <span class="text-danger">*</span></label>
+            <select name="user_id" class="form-select" required>
+              <option value="">请选择用户</option>
+              {% for u in users %}
+              <option value="{{ u.user_id }}">{{ u.user_id }} - {{ u.email }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">隧道名称 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">类型</label>
+            <select name="type" class="form-select">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">本地 IP</label>
+            <input type="text" name="local_ip" class="form-control" value="127.0.0.1">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">本地端口 <span class="text-danger">*</span></label>
+            <input type="number" name="local_port" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">远程端口（可选，留空自动分配）</label>
+            <input type="number" name="remote_port" class="form-control" placeholder="如 20001">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">创建</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">编辑隧道</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editForm">
+        <input type="hidden" name="tunnel_id" id="edit_id">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">隧道名称</label>
+            <input type="text" name="name" id="edit_name" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">类型</label>
+            <select name="type" id="edit_type" class="form-select">
+              <option value="">不修改</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">本地 IP</label>
+            <input type="text" name="local_ip" id="edit_local_ip" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">本地端口</label>
+            <input type="number" name="local_port" id="edit_local_port" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">远程端口</label>
+            <input type="number" name="remote_port" id="edit_remote_port" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">所属用户</label>
+            <select name="user_id" id="edit_user_id" class="form-select">
+              <option value="">不修改</option>
+              {% for u in users %}
+              <option value="{{ u.user_id }}">{{ u.user_id }} - {{ u.email }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">确认删除</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>确定要删除隧道 #<strong id="delete_target"></strong> 吗？</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmDelete">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+let deleteTunnelId = null;
+
+function editTunnel(id, name, type, localIp, localPort, remotePort, userId) {
+  document.getElementById('edit_id').value = id;
+  document.getElementById('edit_name').value = name;
+  document.getElementById('edit_type').value = '';
+  document.getElementById('edit_local_ip').value = localIp;
+  document.getElementById('edit_local_port').value = localPort;
+  document.getElementById('edit_remote_port').value = remotePort || '';
+  document.getElementById('edit_user_id').value = '';
+}
+
+function deleteTunnel(id) {
+  deleteTunnelId = id;
+  document.getElementById('delete_target').textContent = id;
+}
+
+document.getElementById('createForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const form = new FormData(this);
+  fetch('/api/web/tunnel/create', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '创建失败');
+      location.reload();
+    })
+    .catch(err => { alert('创建失败: ' + err.message); btn.disabled = false; });
+});
+
+document.getElementById('editForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const id = document.getElementById('edit_id').value;
+  const form = new FormData(this);
+  fetch(`/api/web/tunnel/${id}/update`, { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '保存失败');
+      location.reload();
+    })
+    .catch(err => { alert('保存失败: ' + err.message); btn.disabled = false; });
+});
+
+document.getElementById('confirmDelete').addEventListener('click', function() {
+  if (!deleteTunnelId) return;
+  this.disabled = true;
+  fetch(`/api/web/tunnel/${deleteTunnelId}/delete`, { method: 'POST' })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '删除失败');
+      location.reload();
+    })
+    .catch(err => { alert('删除失败: ' + err.message); this.disabled = false; });
+});
+</script>
+</body>
+</html>

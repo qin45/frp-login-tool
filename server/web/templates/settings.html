@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRP 管理后台 - 系统设置</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+body { background: #f0f2f5; }
+.navbar { background: #1a73e8 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.navbar .nav-link { color: rgba(255,255,255,0.85) !important; padding: 0.5rem 1rem !important; border-radius: 6px; margin: 0 2px; }
+.navbar .nav-link:hover, .navbar .nav-link.active { background: rgba(255,255,255,0.15); color: #fff !important; }
+.navbar .nav-link i { margin-right: 6px; }
+.page-header { padding: 1.5rem 0 1rem; }
+.page-header h3 { margin: 0; font-weight: 600; }
+.card { border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); border: none; }
+.card-header { background: #f8f9fa; font-weight: 600; border-bottom: 1px solid #eee; }
+textarea.json-editor { font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.5; min-height: 350px; }
+.save-status { display: none; }
+</style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container">
+    <span class="navbar-brand fw-bold"><i class="fas fa-server me-2"></i>FRP 管理后台</span>
+    <div class="navbar-nav">
+      <a class="nav-link" href="/users"><i class="fas fa-users"></i>用户管理</a>
+      <a class="nav-link" href="/tunnels"><i class="fas fa-network-wired"></i>隧道管理</a>
+      <a class="nav-link" href="/codes"><i class="fas fa-key"></i>激活码</a>
+      <a class="nav-link active" href="/settings"><i class="fas fa-cog"></i>系统设置</a>
+    </div>
+    <div class="d-flex">
+      <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i>退出</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h3><i class="fas fa-cog me-2 text-primary"></i>系统设置</h3>
+    <p class="text-muted mt-1 mb-0">编辑配置文件，保存后需重启服务器方可生效。</p>
+  </div>
+
+  <!-- Server Config -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-file-code me-2"></i>服务器配置文件</span>
+      <small class="text-muted">{{ server_cfg_path }}</small>
+    </div>
+    <div class="card-body">
+      <textarea id="serverConfig" class="form-control json-editor">{{ server_config|safe }}</textarea>
+      <div class="d-flex align-items-center mt-3">
+        <button class="btn btn-primary" onclick="saveServerConfig()"><i class="fas fa-save me-1"></i>保存服务器配置</button>
+        <span id="serverStatus" class="save-status ms-3"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Web Config -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-file-code me-2"></i>网站配置文件</span>
+      <small class="text-muted">{{ web_cfg_path }}</small>
+    </div>
+    <div class="card-body">
+      <textarea id="webConfig" class="form-control json-editor">{{ web_config|safe }}</textarea>
+      <div class="d-flex align-items-center mt-3">
+        <button class="btn btn-primary" onclick="saveWebConfig()"><i class="fas fa-save me-1"></i>保存网站配置</button>
+        <span id="webStatus" class="save-status ms-3"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+function showStatus(el, msg, isError) {
+  el.textContent = msg;
+  el.style.display = 'inline';
+  el.className = 'ms-3 ' + (isError ? 'text-danger' : 'text-success');
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+function saveServerConfig() {
+  const btn = event.target;
+  btn.disabled = true;
+  const data = new URLSearchParams();
+  data.append('config', document.getElementById('serverConfig').value);
+  fetch('/api/web/settings/server', { method: 'POST', body: data })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '保存失败');
+      showStatus(document.getElementById('serverStatus'), '✓ 已保存，重启服务器后生效');
+    })
+    .catch(err => { showStatus(document.getElementById('serverStatus'), '✗ ' + err.message, true); })
+    .finally(() => { btn.disabled = false; });
+}
+
+function saveWebConfig() {
+  const btn = event.target;
+  btn.disabled = true;
+  const data = new URLSearchParams();
+  data.append('config', document.getElementById('webConfig').value);
+  fetch('/api/web/settings/web', { method: 'POST', body: data })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '保存失败');
+      showStatus(document.getElementById('webStatus'), '✓ 已保存，重启服务器后生效');
+    })
+    .catch(err => { showStatus(document.getElementById('webStatus'), '✗ ' + err.message, true); })
+    .finally(() => { btn.disabled = false; });
+}
+</script>
+</body>
+</html>

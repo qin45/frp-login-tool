@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRP 管理后台 - 激活码管理</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+body { background: #f0f2f5; }
+.navbar { background: #1a73e8 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.navbar .nav-link { color: rgba(255,255,255,0.85) !important; padding: 0.5rem 1rem !important; border-radius: 6px; margin: 0 2px; }
+.navbar .nav-link:hover, .navbar .nav-link.active { background: rgba(255,255,255,0.15); color: #fff !important; }
+.navbar .nav-link i { margin-right: 6px; }
+.page-header { padding: 1.5rem 0 1rem; }
+.page-header h3 { margin: 0; font-weight: 600; }
+.card { border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); border: none; }
+.table th { background: #f8f9fa; border-top: none; font-weight: 600; }
+.btn-sm i { margin-right: 4px; }
+.modal-header { background: #f8f9fa; border-radius: 10px 10px 0 0; }
+</style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container">
+    <span class="navbar-brand fw-bold"><i class="fas fa-server me-2"></i>FRP 管理后台</span>
+    <div class="navbar-nav">
+      <a class="nav-link" href="/users"><i class="fas fa-users"></i>用户管理</a>
+      <a class="nav-link" href="/tunnels"><i class="fas fa-network-wired"></i>隧道管理</a>
+      <a class="nav-link active" href="/codes"><i class="fas fa-key"></i>激活码</a>
+      <a class="nav-link" href="/settings"><i class="fas fa-cog"></i>系统设置</a>
+    </div>
+    <div class="d-flex">
+      <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i>退出</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header d-flex justify-content-between align-items-center">
+    <h3><i class="fas fa-key me-2 text-primary"></i>激活码管理</h3>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+      <i class="fas fa-plus"></i> 创建激活码
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>激活码</th>
+              <th>时长</th>
+              <th>已使用</th>
+              <th>使用用户</th>
+              <th>使用时间</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in codes %}
+            <tr>
+              <td>{{ c.id }}</td>
+              <td><code>{{ c.code }}</code></td>
+              <td>{{ c.duration_days }}天 {{ c.duration_hours }}小时 {{ c.duration_minutes }}分</td>
+              <td>{% if c.used %}<span class="badge bg-danger">是</span>{% else %}<span class="badge bg-success">否</span>{% endif %}</td>
+              <td>{{ c.used_by or '-' }}</td>
+              <td>{{ c.used_at.strftime('%Y-%m-%d %H:%M') if c.used_at else '-' }}</td>
+              <td>{{ c.created_at.strftime('%Y-%m-%d %H:%M') if c.created_at else 'N/A' }}</td>
+              <td>
+                {% if not c.used %}
+                <button class="btn btn-sm btn-outline-primary" onclick="editCode({{ c.id }},'{{ c.code }}','{{ c.duration_days }}-{{ c.duration_hours }}-{{ c.duration_minutes }}')" data-bs-toggle="modal" data-bs-target="#editModal">
+                  <i class="fas fa-edit"></i>编辑
+                </button>
+                {% endif %}
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteCode({{ c.id }})" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                  <i class="fas fa-trash"></i>删除
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-muted py-4">暂无激活码数据</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">创建激活码</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="createForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">激活码 <span class="text-danger">*</span></label>
+            <input type="text" name="code" class="form-control" required placeholder="输入激活码字符串">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">时长（格式 DD-HH-MM）<span class="text-danger">*</span></label>
+            <input type="text" name="duration" class="form-control" required placeholder="如 30-00-00 表示30天">
+            <div class="form-text">格式：天-小时-分钟，例如 30-00-00 为 30 天</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">创建</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">编辑激活码</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editForm">
+        <input type="hidden" name="code_id" id="edit_id">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">激活码</label>
+            <input type="text" name="code" id="edit_code" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">时长（格式 DD-HH-MM，留空不修改）</label>
+            <input type="text" name="duration" id="edit_duration" class="form-control" placeholder="如 30-00-00">
+            <div class="form-text">格式：天-小时-分钟，例如 30-00-00 为 30 天</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">确认删除</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>确定要删除激活码 #<strong id="delete_target"></strong> 吗？</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmDelete">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+let deleteCodeId = null;
+
+function editCode(id, code, duration) {
+  document.getElementById('edit_id').value = id;
+  document.getElementById('edit_code').value = code;
+  document.getElementById('edit_duration').value = duration;
+}
+
+function deleteCode(id) {
+  deleteCodeId = id;
+  document.getElementById('delete_target').textContent = id;
+}
+
+document.getElementById('createForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const form = new FormData(this);
+  fetch('/api/web/code/create', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '创建失败');
+      location.reload();
+    })
+    .catch(err => { alert('创建失败: ' + err.message); btn.disabled = false; });
+});
+
+document.getElementById('editForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const id = document.getElementById('edit_id').value;
+  const form = new FormData(this);
+  fetch(`/api/web/code/${id}/update`, { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '保存失败');
+      location.reload();
+    })
+    .catch(err => { alert('保存失败: ' + err.message); btn.disabled = false; });
+});
+
+document.getElementById('confirmDelete').addEventListener('click', function() {
+  if (!deleteCodeId) return;
+  this.disabled = true;
+  fetch(`/api/web/code/${deleteCodeId}/delete`, { method: 'POST' })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '删除失败');
+      location.reload();
+    })
+    .catch(err => { alert('删除失败: ' + err.message); this.disabled = false; });
+});
+</script>
+</body>
+</html>

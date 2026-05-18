@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRP 管理后台 - 登录</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background: #f0f2f5; display: flex; align-items: center; min-height: 100vh; }
+.login-card { max-width: 400px; width: 100%; margin: 0 auto; }
+.card { border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+.card-header { background: #1a73e8; color: #fff; border-radius: 12px 12px 0 0 !important; padding: 1.2rem; text-align: center; }
+.card-header h4 { margin: 0; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="card">
+    <div class="card-header">
+      <h4>FRP 管理后台</h4>
+    </div>
+    <div class="card-body p-4">
+      {% if error %}
+      <div class="alert alert-danger py-2">{{ error }}</div>
+      {% endif %}
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">用户名</label>
+          <input type="text" name="username" class="form-control" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">密码</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">登 录</button>
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+</html>

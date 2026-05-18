@@ -1285,7 +1285,7 @@ def cmd_setup():
     setup_config()
 
 
-def cmd_start():
+def cmd_start(args=None):
     cfg = load_config()
     if not cfg.get("configured"):
         print("Not configured. Run 'python main.py setup' first.")
@@ -1307,6 +1307,43 @@ def cmd_start():
     start_all_processes(cfg)
     ExpiryChecker(db, token_mgr).start()
     app = create_app(db, email_sender, token_mgr, cfg)
+
+    # Start web admin panel if --web on
+    if args and args.web == "on":
+        web_module = None
+        web_py = BASE_DIR / "web" / "web.py"
+        if web_py.exists():
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("web_admin", str(web_py))
+            if spec and spec.loader:
+                web_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(web_module)
+        if web_module:
+            create_web_admin_app = getattr(web_module, "create_web_app", None)
+        else:
+            create_web_admin_app = None
+
+        if create_web_admin_app:
+            web_app = create_web_admin_app(db, cfg)
+            if web_app:
+                web_cfg_path = BASE_DIR / "web" / "web_config.json"
+                try:
+                    with open(web_cfg_path, "r", encoding="utf-8") as f:
+                        web_cfg_data = json.load(f)
+                except (IOError, json.JSONDecodeError):
+                    web_cfg_data = {}
+                web_port = web_cfg_data.get("port", 5000)
+                web_thread = threading.Thread(
+                    target=web_app.run,
+                    kwargs={"host": "0.0.0.0", "port": web_port, "debug": False, "threaded": True},
+                    daemon=True,
+                )
+                web_thread.start()
+                logger.info(f"Web admin panel started on port {web_port} (HTTP)")
+            else:
+                logger.warning("Web admin panel not started (no web config). Run 'python main.py web setup' first.")
+    else:
+        logger.info("Web admin panel disabled (use --web on to enable)")
     https_cfg = cfg.get("https", {})
     port = https_cfg.get("port", 8443)
     cert_file = https_cfg.get("cert_file", "")
@@ -1443,6 +1480,26 @@ def cmd_list_codes(_args=None):
         print(f"{c['id']:<5} {c['code']:<25} {duration:<15} {used:<5} {used_by:<12} {used_at:<20}")
 
 
+def cmd_web_setup():
+    """Run the web admin panel setup."""
+    web_py = BASE_DIR / "web" / "web.py"
+    if not web_py.exists():
+        print("Web module not found at server/web/web.py")
+        sys.exit(1)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("web_admin", str(web_py))
+    if not spec or not spec.loader:
+        print("Failed to load web module")
+        sys.exit(1)
+    web_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(web_module)
+    if hasattr(web_module, "setup_web_config"):
+        web_module.setup_web_config()
+    else:
+        print("setup_web_config not found in web module")
+        sys.exit(1)
+
+
 # ============================================================
 # Entry Point
 # ============================================================
@@ -1450,7 +1507,9 @@ def main():
     parser = argparse.ArgumentParser(description="FRP Login Tool - Server")
     sp = parser.add_subparsers(dest="command")
     sp.add_parser("setup", help="Initial configuration")
-    sp.add_parser("start", help="Start server")
+    p_start = sp.add_parser("start", help="Start server")
+    p_start.add_argument("--web", choices=["on", "off"], default="off",
+                        help="Start web admin panel (requires server/web/web.py)")
     p_exp = sp.add_parser("set-expiry", help="Set user expiration")
     p_exp.add_argument("user_id", help="e.g. user0001")
     p_exp.add_argument("date", help="Date: YYYY-MM-DD")
@@ -1460,11 +1519,13 @@ def main():
     p_code.add_argument("code", help="Activation code string")
     p_code.add_argument("duration", help="Duration in DD-HH-MM format (e.g. 30-00-00)")
     sp.add_parser("list-codes", help="List activation codes")
+    p_web = sp.add_parser("web", help="Web admin panel management")
+    p_web.add_argument("action", choices=["setup"], help="Setup web admin panel")
     args = parser.parse_args()
     if args.command == "setup":
         cmd_setup()
     elif args.command == "start":
-        cmd_start()
+        cmd_start(args)
     elif args.command == "set-expiry":
         cmd_set_expiry(args)
     elif args.command == "list-users":
@@ -1473,6 +1534,9 @@ def main():
         cmd_add_code(args)
     elif args.command == "list-codes":
         cmd_list_codes()
+    elif args.command == "web":
+        if args.action == "setup":
+            cmd_web_setup()
     else:
         parser.print_help()
 
