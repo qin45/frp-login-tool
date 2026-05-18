@@ -104,7 +104,7 @@ python main.py list-codes
 
 Users can enter activation codes in the client GUI by clicking the **Activate** button on the main dashboard. If the account is already expired, the activation duration is added from the current time; if still active, the duration is added to the existing expiration.
 
-### Management API
+## Management API
 
 The server provides a separate HTTP management API for automated administration. Configure it in `config.json` or during `python main.py setup`:
 
@@ -113,74 +113,122 @@ The server provides a separate HTTP management API for automated administration.
   "management_api": {
     "enabled": true,
     "port": 8444,
+    "api_key": "your-secret-key",
     "allowed_ips": ["127.0.0.1"]
   }
 }
 ```
 
-All endpoints return JSON. If `allowed_ips` is configured, requests from other IPs are rejected with `403 Forbidden`.
+All endpoints require the configured `api_key` — pass it in the JSON body (POST/PUT) or as a query parameter `?key=...` (GET/DELETE). If `allowed_ips` is configured, requests from other IPs are rejected with `403 Forbidden`.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/management/user` | Create user |
+| PUT | `/api/management/user/<user_id>` | Update user |
+| DELETE | `/api/management/user/<user_id>` | Delete user |
+| GET | `/api/management/users` | List all users |
+| POST | `/api/management/tunnel` | Create tunnel |
+| PUT | `/api/management/tunnel/<id>` | Update tunnel |
+| DELETE | `/api/management/tunnel/<id>` | Delete tunnel |
+| GET | `/api/management/tunnels` | List all tunnels |
+| POST | `/api/management/code` | Create activation code |
+| PUT | `/api/management/code/<id>` | Update activation code |
+| DELETE | `/api/management/code/<id>` | Delete activation code |
+| GET | `/api/management/codes` | List all activation codes |
+
+### Request Body Reference
 
 #### User Management
 
-**Create user**
-```bash
-curl -X POST http://localhost:8444/api/management/user \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"secret123","user_id":"custom001","expires_at":"2027-12-31 23:59"}'
-```
-`user_id` and `expires_at` are optional. Auto-generated user ID if omitted, default expiry is yesterday (account starts expired).
+**POST `/api/management/user`** — Create user
 
-**Update user**
-```bash
-curl -X PUT http://localhost:8444/api/management/user/user001 \
-  -H "Content-Type: application/json" \
-  -d '{"email":"new@example.com","password":"newpass","new_user_id":"new001","expires_at":"2027-12-31 23:59"}'
-```
-All fields optional — only provided fields are updated.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | **yes** | API key |
+| `email` | string | **yes** | User email |
+| `password` | string | **yes** | User password |
+| `user_id` | string | no | Custom ID (auto-generated if omitted) |
+| `expires_at` | string | no | `YYYY-MM-DD HH:MM` (defaults to expired) |
+
+**PUT `/api/management/user/<user_id>`** — Update user
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | **yes** | API key |
+| `email` | string | no | New email |
+| `password` | string | no | New password |
+| `new_user_id` | string | no | Change user ID |
+| `expires_at` | string | no | `YYYY-MM-DD HH:MM` |
+
+**DELETE `/api/management/user/<user_id>`** — Delete user (requires `?key=...`)
+
+**GET `/api/management/users`** — List all users (requires `?key=...`)
 
 #### Tunnel Management
 
-**Create tunnel**
-```bash
-curl -X POST http://localhost:8444/api/management/tunnel \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"user001","name":"ssh","type":"tcp","local_ip":"127.0.0.1","local_port":22,"remote_port":20001}'
-```
-`remote_port` is optional (auto-assigned from 20000-21000 if omitted).
+**POST `/api/management/tunnel`** — Create tunnel
 
-**Update tunnel**
-```bash
-curl -X PUT http://localhost:8444/api/management/tunnel/1 \
-  -H "Content-Type: application/json" \
-  -d '{"name":"new-name","local_port":8080,"remote_port":20002}'
-```
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | **yes** | API key |
+| `user_id` | string | **yes** | Owner user ID |
+| `name` | string | **yes** | Tunnel name |
+| `type` | string | no | `tcp` (default) or `udp` |
+| `local_ip` | string | no | Default `127.0.0.1` |
+| `local_port` | int | **yes** | Local port |
+| `remote_port` | int | no | Remote port (auto-assigned if omitted) |
 
-**Delete tunnel**
-```bash
-curl -X DELETE http://localhost:8444/api/management/tunnel/1
-```
+**PUT `/api/management/tunnel/<id>`** — Update tunnel (all fields optional)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `key` | string | API key |
+| `name` | string | New name |
+| `type` | string | `tcp` or `udp` |
+| `local_ip` | string | Local IP |
+| `local_port` | int | Local port |
+| `remote_port` | int | Remote port |
+| `user_id` | string | Change owner |
 
 #### Activation Code Management
 
-**Create code**
-```bash
-curl -X POST http://localhost:8444/api/management/code \
-  -H "Content-Type: application/json" \
-  -d '{"code":"MYCODE","duration":"30-00-00"}'
-```
-Duration format: `DD-HH-MM`.
+**POST `/api/management/code`** — Create code
 
-**Update code**
-```bash
-curl -X PUT http://localhost:8444/api/management/code/1 \
-  -H "Content-Type: application/json" \
-  -d '{"code":"NEWCODE","duration":"60-00-00"}'
-```
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | **yes** | API key |
+| `code` | string | **yes** | Code string |
+| `duration` | string | **yes** | `DD-HH-MM` format |
+
+**PUT `/api/management/code/<id>`** — Update code
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `key` | string | API key |
+| `code` | string | New code string |
+| `duration` | string | `DD-HH-MM` format |
+
 Cannot modify a used code.
 
-**Delete code**
+### Examples
+
+**Create user (key in body)**
 ```bash
-curl -X DELETE http://localhost:8444/api/management/code/1
+curl -X POST http://localhost:8444/api/management/user \
+  -H "Content-Type: application/json" \
+  -d '{"key":"your-secret-key","email":"user@example.com","password":"secret123","user_id":"custom001","expires_at":"2027-12-31 23:59"}'
+```
+
+**List users (key as query param)**
+```bash
+curl "http://localhost:8444/api/management/users?key=your-secret-key"
+```
+
+**Delete tunnel (key as query param)**
+```bash
+curl -X DELETE "http://localhost:8444/api/management/tunnel/1?key=your-secret-key"
 ```
 
 ## How It Works

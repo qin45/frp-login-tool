@@ -126,6 +126,7 @@ def setup_config():
     mgmt["enabled"] = input("Enable Management API? (Y/n): ").strip().lower() != "n"
     if mgmt["enabled"]:
         mgmt["port"] = int(input("Management API Port (default 8444): ").strip() or "8444")
+        mgmt["api_key"] = input("API Key (required in all requests): ").strip()
         allowed = input("Allowed IPs (comma-separated, empty = localhost only): ").strip()
         mgmt["allowed_ips"] = [ip.strip() for ip in allowed.split(",") if ip.strip()] if allowed else ["127.0.0.1"]
     cfg["management_api"] = mgmt
@@ -453,6 +454,21 @@ class Database:
             return False, "Code not found"
         self._execute("DELETE FROM activation_codes WHERE id=%s", (code_id,))
         return True, None
+
+    def admin_delete_user(self, user_id):
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return False, "User not found"
+        self._execute("DELETE FROM tunnels WHERE user_id=%s", (user_id,))
+        self._execute("DELETE FROM users WHERE user_id=%s", (user_id,))
+        return True, None
+
+    def admin_list_all_tunnels(self):
+        return self._fetch_all(
+            """SELECT t.*, u.email FROM tunnels t
+               LEFT JOIN users u ON t.user_id = u.user_id
+               ORDER BY t.id"""
+        )
 
     # ---- Tunnel operations ----
     def get_available_port(self):
@@ -1046,14 +1062,22 @@ def create_app(db, email_sender, token_mgr, cfg):
 # ============================================================
 # Management API
 # ============================================================
-def check_ip(allowed_ips):
-    """Middleware factory: reject requests from non-allowed IPs."""
+def require_api_auth(allowed_ips, api_key):
+    """Middleware factory: reject requests without valid API key or from non-allowed IPs."""
     def decorator(f):
         def wrapper(*args, **kwargs):
             if allowed_ips:
                 remote = request.remote_addr or "127.0.0.1"
                 if remote not in allowed_ips:
                     return jsonify({"error": "Forbidden: IP not allowed"}), 403
+            # Check API key from body (POST/PUT) or query param (GET/DELETE)
+            key = None
+            if request.is_json:
+                key = (request.get_json() or {}).get("key")
+            if not key:
+                key = request.args.get("key")
+            if not key or key != api_key:
+                return jsonify({"error": "Forbidden: invalid or missing API key"}), 403
             return f(*args, **kwargs)
         wrapper.__name__ = f.__name__
         return wrapper
@@ -1063,11 +1087,12 @@ def check_ip(allowed_ips):
 def create_management_app(db, cfg):
     mgmt_cfg = cfg.get("management_api", {})
     allowed_ips = mgmt_cfg.get("allowed_ips", ["127.0.0.1"])
+    api_key = mgmt_cfg.get("api_key", "")
     app = Flask(__name__)
 
     # ---- User management ----
     @app.route("/api/management/user", methods=["POST"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_create_user():
         data = request.get_json()
         if not data or not data.get("email") or not data.get("password"):
@@ -1089,7 +1114,7 @@ def create_management_app(db, cfg):
         return jsonify({"status": "ok", "user_id": result}), 201
 
     @app.route("/api/management/user/<user_id>", methods=["PUT"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_update_user(user_id):
         data = request.get_json() or {}
         email = data.get("email")
@@ -1112,9 +1137,23 @@ def create_management_app(db, cfg):
             "expires_at": result["expires_at"].isoformat() if result["expires_at"] else None,
         }})
 
+    @app.route("/api/management/user/<user_id>", methods=["DELETE"])
+    @require_api_auth(allowed_ips, api_key)
+    def mgmt_delete_user(user_id):
+        ok, err = db.admin_delete_user(user_id)
+        if not ok:
+            return jsonify({"error": err}), 400
+        return jsonify({"status": "ok"})
+
+    @app.route("/api/management/users", methods=["GET"])
+    @require_api_auth(allowed_ips, api_key)
+    def mgmt_list_users():
+        users = db.list_users()
+        return jsonify({"users": users})
+
     # ---- Tunnel management ----
     @app.route("/api/management/tunnel", methods=["POST"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_create_tunnel():
         data = request.get_json()
         if not data or not data.get("user_id") or not data.get("name") or not data.get("local_port"):
@@ -1139,7 +1178,7 @@ def create_management_app(db, cfg):
         return jsonify({"status": "ok", "tunnel": result}), 201
 
     @app.route("/api/management/tunnel/<int:tunnel_id>", methods=["PUT"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_update_tunnel(tunnel_id):
         data = request.get_json() or {}
         name = data.get("name")
@@ -1164,16 +1203,22 @@ def create_management_app(db, cfg):
         return jsonify({"status": "ok", "tunnel": result})
 
     @app.route("/api/management/tunnel/<int:tunnel_id>", methods=["DELETE"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_delete_tunnel(tunnel_id):
         ok, err = db.admin_delete_tunnel(tunnel_id)
         if not ok:
             return jsonify({"error": err}), 400
         return jsonify({"status": "ok"})
 
+    @app.route("/api/management/tunnels", methods=["GET"])
+    @require_api_auth(allowed_ips, api_key)
+    def mgmt_list_tunnels():
+        tunnels = db.admin_list_all_tunnels()
+        return jsonify({"tunnels": tunnels})
+
     # ---- Activation code management ----
     @app.route("/api/management/code", methods=["POST"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_create_code():
         data = request.get_json()
         if not data or not data.get("code"):
@@ -1189,7 +1234,7 @@ def create_management_app(db, cfg):
         return jsonify({"status": "ok"}), 201
 
     @app.route("/api/management/code/<int:code_id>", methods=["PUT"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_update_code(code_id):
         data = request.get_json() or {}
         new_code = data.get("code")
@@ -1207,12 +1252,18 @@ def create_management_app(db, cfg):
         return jsonify({"status": "ok", "code": result})
 
     @app.route("/api/management/code/<int:code_id>", methods=["DELETE"])
-    @check_ip(allowed_ips)
+    @require_api_auth(allowed_ips, api_key)
     def mgmt_delete_code(code_id):
         ok, err = db.admin_delete_code(code_id)
         if not ok:
             return jsonify({"error": err}), 400
         return jsonify({"status": "ok"})
+
+    @app.route("/api/management/codes", methods=["GET"])
+    @require_api_auth(allowed_ips, api_key)
+    def mgmt_list_codes():
+        codes = db.list_activation_codes()
+        return jsonify({"codes": codes})
 
     return app
 

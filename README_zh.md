@@ -104,7 +104,7 @@ python main.py list-codes
 
 用户在客户端主面板点击 **激活** 按钮，输入激活码即可延长到期时间。若账户已到期，则从当前时间加上激活时长；若未到期，则在原到期时间上累加。
 
-### 管理 API
+## 管理 API
 
 服务端提供独立的 HTTP 管理 API，用于自动化管理。可在 `config.json` 或 `python main.py setup` 中配置：
 
@@ -113,74 +113,122 @@ python main.py list-codes
   "management_api": {
     "enabled": true,
     "port": 8444,
+    "api_key": "your-secret-key",
     "allowed_ips": ["127.0.0.1"]
   }
 }
 ```
 
-所有端点返回 JSON。如配置了 `allowed_ips`，其他 IP 的请求将被拒绝（`403 Forbidden`）。
+所有请求需携带配置的 `api_key` — POST/PUT 在 JSON 体中传入 `key`，GET/DELETE 以查询参数 `?key=...` 传递。如配置了 `allowed_ips`，其他 IP 的请求将被拒绝（`403 Forbidden`）。
+
+### 端点列表
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/management/user` | 创建用户 |
+| PUT | `/api/management/user/<user_id>` | 修改用户 |
+| DELETE | `/api/management/user/<user_id>` | 删除用户 |
+| GET | `/api/management/users` | 获取所有用户 |
+| POST | `/api/management/tunnel` | 创建隧道 |
+| PUT | `/api/management/tunnel/<id>` | 修改隧道 |
+| DELETE | `/api/management/tunnel/<id>` | 删除隧道 |
+| GET | `/api/management/tunnels` | 获取所有隧道 |
+| POST | `/api/management/code` | 创建激活码 |
+| PUT | `/api/management/code/<id>` | 修改激活码 |
+| DELETE | `/api/management/code/<id>` | 删除激活码 |
+| GET | `/api/management/codes` | 获取所有激活码 |
+
+### 请求体参考
 
 #### 用户管理
 
-**创建用户**
-```bash
-curl -X POST http://localhost:8444/api/management/user \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"secret123","user_id":"custom001","expires_at":"2027-12-31 23:59"}'
-```
-`user_id` 和 `expires_at` 可选。不传 `user_id` 则自动生成，默认到期时间为昨天（账号创建后为到期状态）。
+**POST `/api/management/user`** — 创建用户
 
-**修改用户**
-```bash
-curl -X PUT http://localhost:8444/api/management/user/user001 \
-  -H "Content-Type: application/json" \
-  -d '{"email":"new@example.com","password":"newpass","new_user_id":"new001","expires_at":"2027-12-31 23:59"}'
-```
-所有字段可选，仅更新传入的字段。
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | string | **是** | API 密钥 |
+| `email` | string | **是** | 用户邮箱 |
+| `password` | string | **是** | 用户密码 |
+| `user_id` | string | 否 | 自定义 ID（不传则自动生成） |
+| `expires_at` | string | 否 | `YYYY-MM-DD HH:MM`（默认为已到期） |
+
+**PUT `/api/management/user/<user_id>`** — 修改用户
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | string | **是** | API 密钥 |
+| `email` | string | 否 | 新邮箱 |
+| `password` | string | 否 | 新密码 |
+| `new_user_id` | string | 否 | 修改用户 ID |
+| `expires_at` | string | 否 | `YYYY-MM-DD HH:MM` |
+
+**DELETE `/api/management/user/<user_id>`** — 删除用户（需 `?key=...`）
+
+**GET `/api/management/users`** — 获取所有用户（需 `?key=...`）
 
 #### 隧道管理
 
-**创建隧道**
-```bash
-curl -X POST http://localhost:8444/api/management/tunnel \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"user001","name":"ssh","type":"tcp","local_ip":"127.0.0.1","local_port":22,"remote_port":20001}'
-```
-`remote_port` 可选，不传则自动分配（20000-21000）。
+**POST `/api/management/tunnel`** — 创建隧道
 
-**修改隧道**
-```bash
-curl -X PUT http://localhost:8444/api/management/tunnel/1 \
-  -H "Content-Type: application/json" \
-  -d '{"name":"new-name","local_port":8080,"remote_port":20002}'
-```
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | string | **是** | API 密钥 |
+| `user_id` | string | **是** | 所属用户 ID |
+| `name` | string | **是** | 隧道名称 |
+| `type` | string | 否 | `tcp`（默认）或 `udp` |
+| `local_ip` | string | 否 | 默认 `127.0.0.1` |
+| `local_port` | int | **是** | 本地端口 |
+| `remote_port` | int | 否 | 远程端口（不传则自动分配） |
 
-**删除隧道**
-```bash
-curl -X DELETE http://localhost:8444/api/management/tunnel/1
-```
+**PUT `/api/management/tunnel/<id>`** — 修改隧道（所有字段可选）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `key` | string | API 密钥 |
+| `name` | string | 新名称 |
+| `type` | string | `tcp` 或 `udp` |
+| `local_ip` | string | 本地 IP |
+| `local_port` | int | 本地端口 |
+| `remote_port` | int | 远程端口 |
+| `user_id` | string | 变更所属用户 |
 
 #### 激活码管理
 
-**创建激活码**
-```bash
-curl -X POST http://localhost:8444/api/management/code \
-  -H "Content-Type: application/json" \
-  -d '{"code":"MYCODE","duration":"30-00-00"}'
-```
-时长格式为 `DD-HH-MM`。
+**POST `/api/management/code`** — 创建激活码
 
-**修改激活码**
-```bash
-curl -X PUT http://localhost:8444/api/management/code/1 \
-  -H "Content-Type: application/json" \
-  -d '{"code":"NEWCODE","duration":"60-00-00"}'
-```
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | string | **是** | API 密钥 |
+| `code` | string | **是** | 激活码内容 |
+| `duration` | string | **是** | `DD-HH-MM` 格式 |
+
+**PUT `/api/management/code/<id>`** — 修改激活码
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `key` | string | API 密钥 |
+| `code` | string | 新激活码内容 |
+| `duration` | string | `DD-HH-MM` 格式 |
+
 已使用的激活码不可修改。
 
-**删除激活码**
+### 示例
+
+**创建用户（密钥在请求体中）**
 ```bash
-curl -X DELETE http://localhost:8444/api/management/code/1
+curl -X POST http://localhost:8444/api/management/user \
+  -H "Content-Type: application/json" \
+  -d '{"key":"your-secret-key","email":"user@example.com","password":"secret123","user_id":"custom001","expires_at":"2027-12-31 23:59"}'
+```
+
+**获取用户列表（密钥作为查询参数）**
+```bash
+curl "http://localhost:8444/api/management/users?key=your-secret-key"
+```
+
+**删除隧道（密钥作为查询参数）**
+```bash
+curl -X DELETE "http://localhost:8444/api/management/tunnel/1?key=your-secret-key"
 ```
 
 ## 工作原理
