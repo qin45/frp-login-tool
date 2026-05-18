@@ -130,6 +130,7 @@ LANGUAGES = {
         "frpc_started_msg": "frpc核心启动成功",
         "copy_address": "复制外网地址",
         "address_copied": "外网地址已复制",
+        "enable_then_copy": "请先启用隧道后再复制外网地址",
         # frpc
         "frpc_not_found": "未找到 frpc.exe",
         "frpc_ini_not_found": "未找到 frpc.ini",
@@ -255,6 +256,7 @@ LANGUAGES = {
         "frpc_started_msg": "frpc core started successfully",
         "copy_address": "Copy External Address",
         "address_copied": "External address copied",
+        "enable_then_copy": "Please enable the tunnel first",
         "frpc_not_found": "frpc.exe not found",
         "frpc_ini_not_found": "frpc.ini not found",
         "frpc_started": "frpc started",
@@ -563,6 +565,8 @@ class FrpLoginApp:
         self.root.minsize(700, 500)
         self.current_user_id = None
         self.current_user_info = None
+        self.ftps_ip = ""
+        self.ftps_port = ""
         self._refresh_timer = None
         self._cooldown_sec = 0
         self._reset_cooldown_sec = 0
@@ -1094,6 +1098,8 @@ class FrpLoginApp:
                    command=self._logout).pack(side=tk.RIGHT, padx=5)
         ttk.Button(header, text=self._tr("refresh"),
                    command=self._refresh_data).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(header, text=self._tr("activate"),
+                   command=self._activate_account).pack(side=tk.RIGHT, padx=5)
 
         # User info bar
         info_frame = ttk.LabelFrame(
@@ -1154,13 +1160,20 @@ class FrpLoginApp:
                    command=self._disable_tunnel).pack(side=tk.LEFT, padx=5)
         ttk.Button(action_frame, text=self._tr("delete"),
                    command=self._delete_tunnel).pack(side=tk.LEFT, padx=5)
-        ttk.Button(action_frame, text=self._tr("activate"),
-                   command=self._activate_account).pack(side=tk.LEFT, padx=5)
 
-        # frpc status
+        # frpc status & copy address
         self.frpc_status_var = tk.StringVar(value=self._tr("frpc_idle"))
         ttk.Label(self.main_frame, textvariable=self.frpc_status_var,
                   foreground="gray").pack(anchor=tk.W, pady=2)
+
+        # Bottom bar: copy external address
+        bottom_frame = ttk.Frame(self.main_frame)
+        bottom_frame.pack(fill=tk.X, pady=2)
+        self.copy_addr_btn = ttk.Button(
+            bottom_frame, text=self._tr("copy_address"),
+            command=self._copy_external_address,
+        )
+        self.copy_addr_btn.pack(side=tk.LEFT, padx=2)
 
         self._update_frpc_status()
         self._refresh_data()
@@ -1181,6 +1194,8 @@ class FrpLoginApp:
             if info_resp.status_code == 200:
                 data = info_resp.json()
                 self.current_user_info = data
+                self.ftps_ip = data.get("ftps_ip", self.ftps_ip)
+                self.ftps_port = data.get("ftps_port", self.ftps_port)
                 self.root.after(0, self._update_info_display)
             tunnels_resp = self.api.list_tunnels()
             if tunnels_resp.status_code == 200:
@@ -1245,6 +1260,11 @@ class FrpLoginApp:
         dialog.geometry("400x300")
         dialog.resizable(False, False)
         dialog.transient(self.root)
+        # Center dialog on parent window
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 400) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 300) // 2
+        dialog.geometry(f"+{x}+{y}")
         dialog.grab_set()
 
         frame = ttk.Frame(dialog, padding=20)
@@ -1338,6 +1358,11 @@ class FrpLoginApp:
         dialog.geometry("400x300")
         dialog.resizable(False, False)
         dialog.transient(self.root)
+        # Center dialog on parent window
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 400) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 300) // 2
+        dialog.geometry(f"+{x}+{y}")
         dialog.grab_set()
 
         frame = ttk.Frame(dialog, padding=20)
@@ -1576,6 +1601,20 @@ class FrpLoginApp:
                    command=do_activate).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text=self._tr("cancel"),
                    command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def _copy_external_address(self):
+        tunnel = self._get_selected_tunnel()
+        if not tunnel:
+            return
+        if tunnel["status"] != self._tr("tunnel_enabled"):
+            self._show_info("info", self._tr("enable_then_copy"))
+            return
+        ext_addr = f"{self.ftps_ip}:{tunnel['remote_port']}"
+        self.clipboard_clear()
+        self.clipboard_append(ext_addr)
+        self.copy_addr_btn.configure(text=self._tr("address_copied"))
+        self.root.after(2000, lambda: self.copy_addr_btn.configure(
+            text=self._tr("copy_address")))
 
     def _disable_all_tunnels(self):
         """Disable all enabled tunnels for the current user."""

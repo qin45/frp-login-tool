@@ -1019,10 +1019,13 @@ def create_app(db, email_sender, token_mgr, cfg):
         if not user:
             return jsonify({"error": "User not found"}), 404
         expired = user["expires_at"] <= datetime.now() if user["expires_at"] else True
+        ftps_cfg = cfg.get("ftps", {})
         return jsonify({
             "user_id": user["user_id"], "email": user["email"],
             "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None,
             "expired": expired,
+            "ftps_ip": ftps_cfg.get("ip", ""),
+            "ftps_port": ftps_cfg.get("port", 7000),
         })
 
     @app.route("/api/tunnels", methods=["GET"])
