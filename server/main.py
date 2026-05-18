@@ -1403,12 +1403,19 @@ def cmd_start(args=None):
                     web_cfg_data = {}
                 web_port = web_cfg_data.get("port", 5000)
                 proto = "HTTPS" if web_ssl_ctx else "HTTP"
-                from werkzeug.serving import make_server
-                web_server = make_server(
-                    "0.0.0.0", web_port, web_app,
-                    ssl_context=web_ssl_ctx,
-                    threaded=True,
-                )
+                import socketserver
+                from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
+
+                class _ThreadedWSGI(socketserver.ThreadingMixIn, WSGIServer):
+                    daemon_threads = True
+                    allow_reuse_address = True
+
+                web_server = _ThreadedWSGI(("0.0.0.0", web_port), WSGIRequestHandler)
+                web_server.set_app(web_app)
+                if web_ssl_ctx:
+                    web_server.socket = web_ssl_ctx.wrap_socket(
+                        web_server.socket, server_side=True
+                    )
                 web_thread = threading.Thread(target=web_server.serve_forever, daemon=True)
                 web_thread.start()
                 logger.info(f"Web admin panel started on port {web_port} ({proto})")

@@ -86,7 +86,7 @@ def ensure_web_ssl(cfg):
 
     # Already configured with valid files
     if cert_file and key_file and os.path.isfile(cert_file) and os.path.isfile(key_file):
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(cert_file, key_file)
         return ctx
 
@@ -164,7 +164,7 @@ def ensure_web_ssl(cfg):
         cfg["ssl"]["ca_cert_file"] = str(ca_cert_path)
         save_web_config(cfg)
         print(f"[Web Config] Self-signed certificates generated in {ssl_dir}")
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(str(server_cert_path), str(server_key_path))
         return ctx
 
