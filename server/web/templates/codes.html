@@ -18,6 +18,9 @@ body { background: #f0f2f5; }
 .table th { background: #f8f9fa; border-top: none; font-weight: 600; }
 .btn-sm i { margin-right: 4px; }
 .modal-header { background: #f8f9fa; border-radius: 10px 10px 0 0; }
+.duration-inputs { display: flex; gap: 10px; }
+.duration-inputs .form-group { flex: 1; }
+.duration-inputs .form-group label { font-size: 0.875rem; color: #666; margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -39,9 +42,14 @@ body { background: #f0f2f5; }
 <div class="container">
   <div class="page-header d-flex justify-content-between align-items-center">
     <h3><i class="fas fa-key me-2 text-primary"></i>激活码管理</h3>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
-      <i class="fas fa-plus"></i> 创建激活码
-    </button>
+    <div>
+      <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#batchModal">
+        <i class="fas fa-layer-group"></i> 批量生成
+      </button>
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+        <i class="fas fa-plus"></i> 创建激活码
+      </button>
+    </div>
   </div>
 
   <div class="card">
@@ -72,7 +80,7 @@ body { background: #f0f2f5; }
               <td>{{ c.created_at.strftime('%Y-%m-%d %H:%M') if c.created_at else 'N/A' }}</td>
               <td>
                 {% if not c.used %}
-                <button class="btn btn-sm btn-outline-primary" onclick="editCode({{ c.id }},'{{ c.code }}','{{ c.duration_days }}-{{ c.duration_hours }}-{{ c.duration_minutes }}')" data-bs-toggle="modal" data-bs-target="#editModal">
+                <button class="btn btn-sm btn-outline-primary" onclick="editCode({{ c.id }},'{{ c.code }}',{{ c.duration_days }},{{ c.duration_hours }},{{ c.duration_minutes }})" data-bs-toggle="modal" data-bs-target="#editModal">
                   <i class="fas fa-edit"></i>编辑
                 </button>
                 {% endif %}
@@ -103,12 +111,30 @@ body { background: #f0f2f5; }
         <div class="modal-body">
           <div class="mb-3">
             <label class="form-label">激活码 <span class="text-danger">*</span></label>
-            <input type="text" name="code" class="form-control" required placeholder="输入激活码字符串">
+            <div class="input-group">
+              <input type="text" name="code" id="create_code" class="form-control" required placeholder="输入或生成激活码">
+              <button type="button" class="btn btn-outline-secondary" onclick="generateCode('create_code')">
+                <i class="fas fa-dice"></i> 生成
+              </button>
+            </div>
           </div>
           <div class="mb-3">
-            <label class="form-label">时长（格式 DD-HH-MM）<span class="text-danger">*</span></label>
-            <input type="text" name="duration" class="form-control" required placeholder="如 30-00-00 表示30天">
-            <div class="form-text">格式：天-小时-分钟，例如 30-00-00 为 30 天</div>
+            <label class="form-label">时长 <span class="text-danger">*</span></label>
+            <div class="duration-inputs">
+              <div class="form-group">
+                <label>天</label>
+                <input type="number" name="days" class="form-control" value="0" min="0" max="3650" required>
+              </div>
+              <div class="form-group">
+                <label>小时</label>
+                <input type="number" name="hours" class="form-control" value="0" min="0" max="23" required>
+              </div>
+              <div class="form-group">
+                <label>分</label>
+                <input type="number" name="minutes" class="form-control" value="0" min="0" max="59" required>
+              </div>
+            </div>
+            <div class="form-text">天数不得超过 3650 天</div>
           </div>
         </div>
         <div class="modal-footer">
@@ -133,17 +159,77 @@ body { background: #f0f2f5; }
         <div class="modal-body">
           <div class="mb-3">
             <label class="form-label">激活码</label>
-            <input type="text" name="code" id="edit_code" class="form-control">
+            <div class="input-group">
+              <input type="text" name="code" id="edit_code" class="form-control">
+              <button type="button" class="btn btn-outline-secondary" onclick="generateCode('edit_code')">
+                <i class="fas fa-dice"></i> 生成
+              </button>
+            </div>
           </div>
           <div class="mb-3">
-            <label class="form-label">时长（格式 DD-HH-MM，留空不修改）</label>
-            <input type="text" name="duration" id="edit_duration" class="form-control" placeholder="如 30-00-00">
-            <div class="form-text">格式：天-小时-分钟，例如 30-00-00 为 30 天</div>
+            <label class="form-label">时长（留空不修改）</label>
+            <div class="duration-inputs">
+              <div class="form-group">
+                <label>天</label>
+                <input type="number" name="days" id="edit_days" class="form-control" placeholder="留空不修改" min="0" max="3650">
+              </div>
+              <div class="form-group">
+                <label>小时</label>
+                <input type="number" name="hours" id="edit_hours" class="form-control" placeholder="留空不修改" min="0" max="23">
+              </div>
+              <div class="form-group">
+                <label>分</label>
+                <input type="number" name="minutes" id="edit_minutes" class="form-control" placeholder="留空不修改" min="0" max="59">
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
           <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Batch Create Modal -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">批量生成激活码</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="batchForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">生成数量 <span class="text-danger">*</span></label>
+            <input type="number" name="count" class="form-control" value="10" min="1" max="99" required>
+            <div class="form-text">1 ~ 99 个</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">时长 <span class="text-danger">*</span></label>
+            <div class="duration-inputs">
+              <div class="form-group">
+                <label>天</label>
+                <input type="number" name="days" class="form-control" value="30" min="0" max="3650" required>
+              </div>
+              <div class="form-group">
+                <label>小时</label>
+                <input type="number" name="hours" class="form-control" value="0" min="0" max="23" required>
+              </div>
+              <div class="form-group">
+                <label>分</label>
+                <input type="number" name="minutes" class="form-control" value="0" min="0" max="59" required>
+              </div>
+            </div>
+            <div class="form-text">天数不得超过 3650 天</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-layer-group"></i> 批量生成</button>
         </div>
       </form>
     </div>
@@ -173,10 +259,21 @@ body { background: #f0f2f5; }
 <script>
 let deleteCodeId = null;
 
-function editCode(id, code, duration) {
+function generateCode(targetId) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let code = '';
+  for (let i = 0; i < 16; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  document.getElementById(targetId).value = code;
+}
+
+function editCode(id, code, days, hours, minutes) {
   document.getElementById('edit_id').value = id;
   document.getElementById('edit_code').value = code;
-  document.getElementById('edit_duration').value = duration;
+  document.getElementById('edit_days').value = days || '';
+  document.getElementById('edit_hours').value = hours || '';
+  document.getElementById('edit_minutes').value = minutes || '';
 }
 
 function deleteCode(id) {
@@ -184,8 +281,18 @@ function deleteCode(id) {
   document.getElementById('delete_target').textContent = id;
 }
 
+function validateDuration(form) {
+  const days = parseInt(form.querySelector('[name="days"]').value) || 0;
+  if (days > 3650) {
+    alert('天数不得超过 3650 天');
+    return false;
+  }
+  return true;
+}
+
 document.getElementById('createForm').addEventListener('submit', function(e) {
   e.preventDefault();
+  if (!validateDuration(this)) return;
   const btn = this.querySelector('button[type="submit"]');
   btn.disabled = true;
   const form = new FormData(this);
@@ -211,6 +318,21 @@ document.getElementById('editForm').addEventListener('submit', function(e) {
       location.reload();
     })
     .catch(err => { alert('保存失败: ' + err.message); btn.disabled = false; });
+});
+
+document.getElementById('batchForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  if (!validateDuration(this)) return;
+  const btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const form = new FormData(this);
+  fetch('/api/web/code/batch-create', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '批量生成失败');
+      location.reload();
+    })
+    .catch(err => { alert('批量生成失败: ' + err.message); btn.disabled = false; });
 });
 
 document.getElementById('confirmDelete').addEventListener('click', function() {

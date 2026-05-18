@@ -5,6 +5,8 @@ Flask-based admin interface for managing users, tunnels, and activation codes.
 import json
 import hashlib
 import os
+import random
+import string
 import secrets
 from datetime import datetime, timedelta
 from functools import wraps
@@ -253,13 +255,26 @@ def create_web_app(db, server_cfg):
     def web_create_code():
         data = request.form
         code = data.get("code", "").strip()
+        if not code:
+            return jsonify({"error": "code required"}), 400
+        days = hours = minutes = 0
         duration = data.get("duration", "").strip()
-        if not code or not duration:
-            return jsonify({"error": "code and duration required"}), 400
-        try:
-            days, hours, minutes = parse_duration(duration)
-        except (ValueError, IndexError):
-            return jsonify({"error": "duration must be DD-HH-MM"}), 400
+        if duration:
+            try:
+                days, hours, minutes = parse_duration(duration)
+            except (ValueError, IndexError):
+                return jsonify({"error": "duration must be DD-HH-MM"}), 400
+        else:
+            try:
+                days = int(data.get("days", 0))
+                hours = int(data.get("hours", 0))
+                minutes = int(data.get("minutes", 0))
+            except (ValueError, TypeError):
+                return jsonify({"error": "days, hours, minutes must be integers"}), 400
+        if days > 3650:
+            return jsonify({"error": "Days cannot exceed 3650"}), 400
+        if days == 0 and hours == 0 and minutes == 0:
+            return jsonify({"error": "Duration must be greater than 0"}), 400
         ok, err = db.admin_create_code(code, days, hours, minutes)
         if not ok:
             return jsonify({"error": err}), 400
@@ -271,13 +286,26 @@ def create_web_app(db, server_cfg):
     def web_update_code(code_id):
         data = request.form
         new_code = data.get("code", "").strip() or None
-        duration = data.get("duration", "").strip()
         days = hours = minutes = None
+        duration = data.get("duration", "").strip()
         if duration:
             try:
                 days, hours, minutes = parse_duration(duration)
             except (ValueError, IndexError):
                 return jsonify({"error": "duration must be DD-HH-MM"}), 400
+        else:
+            d = data.get("days", "").strip()
+            h = data.get("hours", "").strip()
+            m = data.get("minutes", "").strip()
+            if d or h or m:
+                try:
+                    days = int(d) if d else None
+                    hours = int(h) if h else None
+                    minutes = int(m) if m else None
+                except (ValueError, TypeError):
+                    return jsonify({"error": "days, hours, minutes must be integers"}), 400
+                if days is not None and days > 3650:
+                    return jsonify({"error": "Days cannot exceed 3650"}), 400
         ok, result = db.admin_update_code(code_id, new_code, days, hours, minutes)
         if not ok:
             return jsonify({"error": result}), 400
@@ -291,6 +319,35 @@ def create_web_app(db, server_cfg):
         if not ok:
             return jsonify({"error": err}), 400
         return jsonify({"status": "ok"})
+
+    @app.route("/api/web/code/batch-create", methods=["POST"])
+    @login_required
+    @admin_required
+    def web_batch_create_codes():
+        data = request.form
+        try:
+            count = int(data.get("count", 0))
+            days = int(data.get("days", 0))
+            hours = int(data.get("hours", 0))
+            minutes = int(data.get("minutes", 0))
+        except (ValueError, TypeError):
+            return jsonify({"error": "count, days, hours, minutes must be integers"}), 400
+        if count < 1 or count > 99:
+            return jsonify({"error": "count must be 1-99"}), 400
+        if days > 3650:
+            return jsonify({"error": "Days cannot exceed 3650"}), 400
+        if days == 0 and hours == 0 and minutes == 0:
+            return jsonify({"error": "Duration must be greater than 0"}), 400
+        created = []
+        errors = []
+        for _ in range(count):
+            code = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+            ok, err = db.admin_create_code(code, days, hours, minutes)
+            if ok:
+                created.append(code)
+            else:
+                errors.append(err)
+        return jsonify({"status": "ok", "created": created, "errors": errors})
 
     # ==================== Settings ====================
     @app.route("/settings")
@@ -342,5 +399,24 @@ def create_web_app(db, server_cfg):
         save_web_config(parsed)
         app.secret_key = parsed.get("secret_key", app.secret_key)
         return jsonify({"status": "ok", "message": "Web config saved. Restart server to apply changes."})
+
+    @app.route("/api/web/settings/change-password", methods=["POST"])
+    @login_required
+    @admin_required
+    def web_change_password():
+        data = request.form
+        current = data.get("current_password", "").strip()
+        new = data.get("new_password", "").strip()
+        if not current or not new:
+            return jsonify({"error": "Current and new password required"}), 400
+        if len(new) < 6:
+            return jsonify({"error": "New password must be >= 6 characters"}), 400
+        cfg = load_web_config()
+        current_hash = hashlib.sha256(current.encode()).hexdigest()
+        if current_hash != cfg.get("password_hash"):
+            return jsonify({"error": "Current password is incorrect"}), 403
+        cfg["password_hash"] = hashlib.sha256(new.encode()).hexdigest()
+        save_web_config(cfg)
+        return jsonify({"status": "ok", "message": "Password changed successfully"})
 
     return app
