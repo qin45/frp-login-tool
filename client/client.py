@@ -1160,20 +1160,14 @@ class FrpLoginApp:
                    command=self._disable_tunnel).pack(side=tk.LEFT, padx=5)
         ttk.Button(action_frame, text=self._tr("delete"),
                    command=self._delete_tunnel).pack(side=tk.LEFT, padx=5)
+        self.copy_addr_btn = ttk.Button(action_frame, text=self._tr("copy_address"),
+                   command=self._copy_external_address)
+        self.copy_addr_btn.pack(side=tk.LEFT, padx=5)
 
-        # frpc status & copy address
+        # frpc status
         self.frpc_status_var = tk.StringVar(value=self._tr("frpc_idle"))
         ttk.Label(self.main_frame, textvariable=self.frpc_status_var,
                   foreground="gray").pack(anchor=tk.W, pady=2)
-
-        # Bottom bar: copy external address
-        bottom_frame = ttk.Frame(self.main_frame)
-        bottom_frame.pack(fill=tk.X, pady=2)
-        self.copy_addr_btn = ttk.Button(
-            bottom_frame, text=self._tr("copy_address"),
-            command=self._copy_external_address,
-        )
-        self.copy_addr_btn.pack(side=tk.LEFT, padx=2)
 
         self._update_frpc_status()
         self._refresh_data()
@@ -1557,6 +1551,11 @@ class FrpLoginApp:
         dialog.geometry("400x200")
         dialog.resizable(False, False)
         dialog.transient(self.root)
+        # Center dialog on parent window
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 400) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 200) // 2
+        dialog.geometry(f"+{x}+{y}")
         dialog.grab_set()
 
         frame = ttk.Frame(dialog, padding=20)
@@ -1610,8 +1609,8 @@ class FrpLoginApp:
             self._show_info("info", self._tr("enable_then_copy"))
             return
         ext_addr = f"{self.ftps_ip}:{tunnel['remote_port']}"
-        self.clipboard_clear()
-        self.clipboard_append(ext_addr)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(ext_addr)
         self.copy_addr_btn.configure(text=self._tr("address_copied"))
         self.root.after(2000, lambda: self.copy_addr_btn.configure(
             text=self._tr("copy_address")))
