@@ -6,6 +6,7 @@ import json
 import hashlib
 import os
 import random
+import ssl
 import string
 import secrets
 from datetime import datetime, timedelta
@@ -85,7 +86,9 @@ def ensure_web_ssl(cfg):
 
     # Already configured with valid files
     if cert_file and key_file and os.path.isfile(cert_file) and os.path.isfile(key_file):
-        return (cert_file, key_file)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_file, key_file)
+        return ctx
 
     # Generate self-signed CA and server certs
     ssl_dir = BASE_DIR / "ssl"
@@ -161,13 +164,15 @@ def ensure_web_ssl(cfg):
         cfg["ssl"]["ca_cert_file"] = str(ca_cert_path)
         save_web_config(cfg)
         print(f"[Web Config] Self-signed certificates generated in {ssl_dir}")
-        return (str(server_cert_path), str(server_key_path))
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(server_cert_path), str(server_key_path))
+        return ctx
 
     except ImportError:
-        print("[Web Config] cryptography not available, using adhoc SSL")
+        print("[Web Config] cryptography not available, using werkzeug adhoc context")
         return "adhoc"
     except Exception as e:
-        print(f"[Web Config] Failed to generate certificates: {e}, using adhoc SSL")
+        print(f"[Web Config] Failed to generate certificates: {e}, using werkzeug adhoc context")
         return "adhoc"
 
 
