@@ -4,8 +4,10 @@ Flask-based admin interface for managing users, tunnels, and activation codes.
 """
 import json
 import hashlib
+import ipaddress
 import os
 import random
+import socket
 import ssl
 import string
 import secrets
@@ -134,6 +136,20 @@ def ensure_web_ssl(cfg):
 
         # Server key + cert signed by CA
         sv_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        # Build SAN entries: localhost, 127.0.0.1, and detected LAN IP
+        san_entries = [
+            x509.DNSName("localhost"),
+            x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+        ]
+        try:
+            tmp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            tmp_sock.connect(("10.255.255.255", 1))
+            lan_ip = tmp_sock.getsockname()[0]
+            tmp_sock.close()
+            if lan_ip and lan_ip != "127.0.0.1":
+                san_entries.append(x509.IPAddress(ipaddress.IPv4Address(lan_ip)))
+        except Exception:
+            pass
         sv_cert = (
             x509.CertificateBuilder()
             .subject_name(x509.Name([
@@ -146,7 +162,7 @@ def ensure_web_ssl(cfg):
             .serial_number(x509.random_serial_number())
             .not_valid_before(datetime.datetime.utcnow())
             .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=3650))
-            .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
+            .add_extension(x509.SubjectAlternativeName(san_entries), critical=False)
             .sign(ca_key, hashes.SHA256())
         )
         with open(server_key_path, "wb") as f:
