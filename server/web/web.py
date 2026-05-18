@@ -52,6 +52,7 @@ def migrate_web_config(cfg):
             "cert_file": "",
             "key_file": "",
             "ca_cert_file": "",
+            "san_ips": [],
         },
     }
 
@@ -85,12 +86,22 @@ def ensure_web_ssl(cfg):
 
     cert_file = ssl_cfg.get("cert_file", "")
     key_file = ssl_cfg.get("key_file", "")
+    san_ips = ssl_cfg.get("san_ips", [])
+    generated_san = ssl_cfg.get("_generated_san", None)
 
-    # Already configured with valid files
-    if cert_file and key_file and os.path.isfile(cert_file) and os.path.isfile(key_file):
+    # If certs exist AND the SAN config hasn't changed, reuse them
+    if (cert_file and key_file
+            and os.path.isfile(cert_file) and os.path.isfile(key_file)
+            and generated_san == san_ips):
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(cert_file, key_file)
         return ctx
+
+    # Certs need (re)generation — delete old ones if present
+    if cert_file and os.path.isfile(cert_file):
+        os.remove(cert_file)
+    if key_file and os.path.isfile(key_file):
+        os.remove(key_file)
 
     # Generate self-signed CA and server certs
     ssl_dir = BASE_DIR / "ssl"
@@ -136,17 +147,27 @@ def ensure_web_ssl(cfg):
 
         # Server key + cert signed by CA
         sv_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        # Build SAN entries: localhost, 127.0.0.1, and detected LAN IP
+        # Build SAN entries: user-configured IPs/domains, localhost, 127.0.0.1, and LAN IP
         san_entries = [
             x509.DNSName("localhost"),
             x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
         ]
+        # Add user-configured SAN entries from web_config.json
+        for entry in san_ips:
+            if not entry.strip():
+                continue
+            try:
+                ip = ipaddress.ip_address(entry.strip())
+                san_entries.append(x509.IPAddress(ip))
+            except ValueError:
+                san_entries.append(x509.DNSName(entry.strip()))
+        # Auto-detect LAN IP
         try:
             tmp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             tmp_sock.connect(("10.255.255.255", 1))
             lan_ip = tmp_sock.getsockname()[0]
             tmp_sock.close()
-            if lan_ip and lan_ip != "127.0.0.1":
+            if lan_ip and lan_ip not in ("127.0.0.1", *san_ips):
                 san_entries.append(x509.IPAddress(ipaddress.IPv4Address(lan_ip)))
         except Exception:
             pass
@@ -178,6 +199,7 @@ def ensure_web_ssl(cfg):
         cfg["ssl"]["cert_file"] = str(server_cert_path)
         cfg["ssl"]["key_file"] = str(server_key_path)
         cfg["ssl"]["ca_cert_file"] = str(ca_cert_path)
+        cfg["ssl"]["_generated_san"] = san_ips
         save_web_config(cfg)
         print(f"[Web Config] Self-signed certificates generated in {ssl_dir}")
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
@@ -197,30 +219,73 @@ def setup_web_config():
     print("=" * 60)
     print("  FRP Login Tool - Admin Web Panel Setup")
     print("=" * 60)
-    cfg = {}
-    cfg["username"] = input("Admin Username (default admin): ").strip() or "admin"
-    password = input("Admin Password: ").strip()
-    while not password:
+    # Load existing config if available
+    existing_cfg = load_web_config()
+    cfg = existing_cfg.copy() if existing_cfg else {}
+    cfg["username"] = input(f"Admin Username (default {cfg.get('username', 'admin')}): ").strip() or cfg.get("username", "admin")
+    password = input("Admin Password (leave empty to keep current): ").strip()
+    if password:
+        while len(password) < 6:
+            password = input("Password must be >= 6 characters, try again: ").strip()
+        cfg["password_hash"] = hashlib.sha256(password.encode()).hexdigest()
+    elif "password_hash" not in cfg:
         password = input("Admin Password (required): ").strip()
-    cfg["password_hash"] = hashlib.sha256(password.encode()).hexdigest()
-    cfg["port"] = int(input("Web Panel Port (default 5000): ").strip() or "5000")
+        while not password:
+            password = input("Admin Password (required): ").strip()
+        cfg["password_hash"] = hashlib.sha256(password.encode()).hexdigest()
+    cfg["port"] = int(input(f"Web Panel Port (default {cfg.get('port', 5000)}): ").strip() or cfg.get("port", 5000))
     allowed = input("Allowed IPs (comma-separated, empty = no restriction): ").strip()
-    cfg["allowed_ips"] = [ip.strip() for ip in allowed.split(",") if ip.strip()] if allowed else []
+    cfg["allowed_ips"] = [ip.strip() for ip in allowed.split(",") if ip.strip()] if allowed else cfg.get("allowed_ips", [])
+
     print("\n--- SSL Configuration ---")
-    ssl_enabled = input("Enable HTTPS? (Y/n): ").strip().lower() != "n"
-    ssl_cfg = {"enabled": ssl_enabled, "self_signed": True,
-               "cert_file": "", "key_file": "", "ca_cert_file": ""}
+    ssl_enabled = input(f"Enable HTTPS? (Y/n): ").strip().lower() != "n"
+    ssl_cfg = cfg.get("ssl", {})
+    ssl_cfg["enabled"] = ssl_enabled
+    ssl_cfg.setdefault("self_signed", True)
+    ssl_cfg.setdefault("cert_file", "")
+    ssl_cfg.setdefault("key_file", "")
+    ssl_cfg.setdefault("ca_cert_file", "")
+    ssl_cfg.setdefault("san_ips", [])
     if ssl_enabled:
         self_signed = input("Use self-signed certificate? (Y/n): ").strip().lower() != "n"
         ssl_cfg["self_signed"] = self_signed
         if not self_signed:
             ssl_cfg["cert_file"] = input("SSL Certificate file path: ").strip()
             ssl_cfg["key_file"] = input("SSL Key file path: ").strip()
+
+        # Certificate SAN IPs/domains
+        current_san = ", ".join(ssl_cfg.get("san_ips", []))
+        print("\n--- Certificate SAN Configuration ---")
+        print("  Enter IP addresses or domain names that clients will use to access this panel.")
+        print("  (comma-separated, e.g. 1.2.3.4,your-domain.com,192.168.1.100)")
+
+        san_input = input(f"  SAN IPs/domains [{current_san}]: ").strip()
+        if san_input:
+            new_san = [s.strip() for s in san_input.split(",") if s.strip()]
+        else:
+            new_san = ssl_cfg.get("san_ips", [])
+        ssl_cfg["san_ips"] = new_san
+
+        # If certs already exist and SAN changed, offer to regenerate
+        old_san = ssl_cfg.get("_generated_san", None)
+        has_certs = bool(ssl_cfg.get("cert_file") and os.path.isfile(ssl_cfg["cert_file"]))
+        if has_certs and old_san != new_san:
+            regen = input("  SAN configuration changed, re-generate certificates now? (Y/n): ").strip().lower() != "n"
+            if regen:
+                # Delete old cert files
+                for key in ("cert_file", "key_file", "ca_cert_file"):
+                    path = ssl_cfg.get(key, "")
+                    if path and os.path.isfile(path):
+                        os.remove(path)
+                    ssl_cfg[key] = ""
+                ssl_cfg.pop("_generated_san", None)
+                print("  Old certificates removed, will be re-generated on next start.\n")
     cfg["ssl"] = ssl_cfg
     cfg["secret_key"] = secrets.token_hex(32)
     save_web_config(cfg)
     print(f"✓ Web config saved to {CONFIG_FILE}")
-    print("  Self-signed certificates will be auto-generated on startup if needed.")
+    if ssl_enabled and ssl_cfg.get("self_signed"):
+        print("  Self-signed certificates will be auto-generated on startup if needed.")
 
 
 def create_web_app(db, server_cfg):
