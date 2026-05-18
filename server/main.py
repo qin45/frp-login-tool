@@ -1365,6 +1365,9 @@ def cmd_start(args=None):
         )
         db.init_database()
         logger.info("Database initialized")
+        # Reset all tunnels to disabled on startup
+        db._execute("UPDATE tunnels SET enabled=0 WHERE enabled=1")
+        logger.info("All tunnels reset to disabled")
     except Exception as e:
         logger.error(f"Database init failed: {e}")
         sys.exit(1)

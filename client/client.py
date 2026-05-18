@@ -125,7 +125,7 @@ LANGUAGES = {
         # Enable info dialog
         "tunnel_enabled_title": "隧道已启用",
         "tunnel_enabled_msg": "隧道已启用成功",
-        "frpc_started_msg": "frpc.ini 已更新，frpc.exe 已启动。",
+        "frpc_started_msg": "frpc核心启动成功",
         "copy_address": "复制外网地址",
         "address_copied": "外网地址已复制",
         # frpc
@@ -248,7 +248,7 @@ LANGUAGES = {
         "port_must_be_number": "Port must be a number",
         "tunnel_enabled_title": "Tunnel Enabled",
         "tunnel_enabled_msg": "Tunnel Enabled Successfully",
-        "frpc_started_msg": "frpc.ini has been updated and frpc.exe started.",
+        "frpc_started_msg": "frpc core started successfully",
         "copy_address": "Copy External Address",
         "address_copied": "External address copied",
         "frpc_not_found": "frpc.exe not found",

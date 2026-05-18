@@ -357,13 +357,19 @@ document.getElementById('confirmDelete').addEventListener('click', function() {
 });
 
 function copyCode(code, btn) {
-  navigator.clipboard.writeText(code).then(() => {
-    const el = document.createElement('span');
-    el.className = 'text-success small ms-1';
-    el.textContent = '已复制';
-    btn.parentNode.appendChild(el);
-    setTimeout(() => el.remove(), 1500);
-  }).catch(() => {});
+  const ta = document.createElement('textarea');
+  ta.value = code;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  const el = document.createElement('span');
+  el.className = 'text-success small ms-1';
+  el.textContent = '已复制';
+  btn.parentNode.appendChild(el);
+  setTimeout(() => el.remove(), 1500);
 }
 
 function toggleAll(master) {
