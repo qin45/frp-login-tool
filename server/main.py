@@ -1559,8 +1559,8 @@ def cmd_list_codes(_args=None):
         print(f"{c['id']:<5} {c['code']:<25} {duration:<15} {used:<5} {used_by:<12} {used_at:<20}")
 
 
-def cmd_web_setup():
-    """Run the web admin panel setup."""
+def _load_web_module():
+    """Dynamically load and return the web module."""
     web_py = BASE_DIR / "web" / "web.py"
     if not web_py.exists():
         print("Web module not found at server/web/web.py")
@@ -1572,11 +1572,17 @@ def cmd_web_setup():
         sys.exit(1)
     web_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(web_module)
-    if hasattr(web_module, "setup_web_config"):
-        web_module.setup_web_config()
-    else:
-        print("setup_web_config not found in web module")
-        sys.exit(1)
+    return web_module
+
+
+def cmd_web_setup():
+    """Run the web admin panel setup."""
+    _load_web_module().setup_web_config()
+
+
+def cmd_web_ssl():
+    """Run the web admin panel SSL configuration."""
+    _load_web_module().cmd_web_ssl()
 
 
 # ============================================================
@@ -1599,7 +1605,7 @@ def main():
     p_code.add_argument("duration", help="Duration in DD-HH-MM format (e.g. 30-00-00)")
     sp.add_parser("list-codes", help="List activation codes")
     p_web = sp.add_parser("web", help="Web admin panel management")
-    p_web.add_argument("action", choices=["setup"], help="Setup web admin panel")
+    p_web.add_argument("action", choices=["setup", "ssl"], help="Setup web panel or configure SSL")
     args = parser.parse_args()
     if args.command == "setup":
         cmd_setup()
@@ -1616,6 +1622,8 @@ def main():
     elif args.command == "web":
         if args.action == "setup":
             cmd_web_setup()
+        elif args.action == "ssl":
+            cmd_web_ssl()
     else:
         parser.print_help()
 

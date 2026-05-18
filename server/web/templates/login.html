@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FRP 管理后台 - 登录</title>
 <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
 <style>
 body { background: #f0f2f5; display: flex; align-items: center; min-height: 100vh; }
 .login-card { max-width: 400px; width: 100%; margin: 0 auto; }
@@ -20,6 +21,11 @@ body { background: #f0f2f5; display: flex; align-items: center; min-height: 100v
       <h4>FRP 管理后台</h4>
     </div>
     <div class="card-body p-4">
+      {% if not ssl_enabled %}
+      <div class="alert alert-warning py-2 text-center">
+        <i class="fas fa-exclamation-triangle me-1"></i>当前未启用 HTTPS，存在数据泄露风险！
+      </div>
+      {% endif %}
       {% if error %}
       <div class="alert alert-danger py-2">{{ error }}</div>
       {% endif %}
