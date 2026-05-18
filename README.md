@@ -6,7 +6,8 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 
 ## Architecture
 
-- **Server** (`server/main.py`): CLI-based server managing FRP tunnels with MySQL storage, SMTP email verification, and fp-multiuser authentication integration.
+- **Server** (`server/main.py`): CLI-based server managing FRP tunnels with MySQL storage, SMTP email verification, fp-multiuser authentication integration, and an optional web admin panel.
+- **Web Admin** (`server/web/web.py`): Flask-based browser admin interface for managing users, tunnels, activation codes, and system settings over HTTPS.
 - **Client** (`client/client.py`): Desktop GUI (tkinter) for users to register, login, and manage tunnels.
 
 ## Features
@@ -19,6 +20,8 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 - **Activation Codes**: admin generates codes with custom durations to extend user expiration
 - **fp-multiuser Integration**: automatic token generation and cleanup via REST API
 - **HTTPS Communication** between client and server
+- **Web Admin Panel**: browser-based management with admin login, user/tunnel/code CRUD, batch operations, config editor, and admin password management
+- **Auto-SSL**: automatic self-signed CA and server certificate generation for the web admin panel, with CA root certificate download
 - **Subprocess Management**: server manages `frps` and `fp-multiuser.py`; client manages `frpc.exe`
 
 ## Prerequisites
@@ -48,9 +51,16 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 
 3. Start the server:
    ```bash
-   python main.py start
+   python main.py start            # Starts API server, frps, fp-multiuser
+   python main.py start --web on   # Also starts the web admin panel
    ```
-   This starts the HTTPS API server, fp-multiuser.py, and frps as subprocesses.
+   This starts the HTTPS API server, fp-multiuser.py, and frps as subprocesses. The `--web on` flag additionally starts the browser-based admin panel.
+
+4. (Optional) Set up the web admin panel before starting with `--web on`:
+   ```bash
+   python main.py web setup
+   ```
+   Follow the prompts to configure admin credentials, port, and SSL settings.
 
 ### Client Setup
 
@@ -74,11 +84,12 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 | Command | Description |
 |---------|-------------|
 | `python main.py setup` | Initial server configuration |
-| `python main.py start` | Start the server |
+| `python main.py start` | Start the server (add `--web on` to enable web admin) |
 | `python main.py set-expiry <user_id> <YYYY-MM-DD HH:MM>` | Set user expiration |
 | `python main.py list-users` | List all registered users |
 | `python main.py add-code <code> <DD-HH-MM>` | Add an activation code |
 | `python main.py list-codes` | List all activation codes |
+| `python main.py web setup` | Configure the web admin panel |
 
 ### Setting User Expiration
 
@@ -103,6 +114,63 @@ python main.py list-codes
 ```
 
 Users can enter activation codes in the client GUI by clicking the **Activate** button on the main dashboard. If the account is already expired, the activation duration is added from the current time; if still active, the duration is added to the existing expiration.
+
+## Web Admin Panel
+
+The server includes an optional browser-based admin panel for managing the FRP system without using the CLI or Management API.
+
+### Setup
+
+```bash
+python main.py web setup
+```
+
+Prompts for admin username, password, port (default 5000), IP restrictions, and SSL/HTTPS configuration.
+
+### Starting
+
+```bash
+python main.py start --web on
+```
+
+The panel runs in a background thread alongside the main API server.
+
+### Access
+
+| Protocol | URL |
+|----------|-----|
+| HTTPS (default) | `https://your-server:5000/` |
+| HTTP | `http://your-server:5000/` |
+
+If using the auto-generated self-signed certificate, browsers will show a security warning. You can download the CA root certificate from the Settings page to trust the certificate chain.
+
+### Features
+
+| Page | Description |
+|------|-------------|
+| **User Management** | Create, edit, delete users; set custom user IDs, email, password, and expiration |
+| **Tunnel Management** | Create, edit, delete tunnels; assign to users; batch delete |
+| **Activation Codes** | Create, edit, delete codes; batch generate (1-99 codes at once); batch delete; one-click copy |
+| **System Settings** | Edit server config and web config files in browser; change admin password; download CA certificate |
+
+### SSL / HTTPS
+
+- When SSL is enabled and no certificate files are configured, the server auto-generates a CA key pair and a server certificate signed by the CA on first start
+- The CA root certificate can be downloaded from the Settings page for client trust configuration
+- Custom certificates can be configured via `python main.py web setup` or by editing `server/web/web_config.json`
+
+### Configuration File
+
+The web admin panel stores its configuration at `server/web/web_config.json`. Key settings:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `port` | `5000` | Panel listen port |
+| `ssl.enabled` | `true` | Enable HTTPS |
+| `ssl.self_signed` | `true` | Auto-generate certificates |
+| `ssl.cert_file` | `""` | Custom cert path |
+| `ssl.key_file` | `""` | Custom key path |
+| `allowed_ips` | `[]` | IP access restrictions (empty = no restriction) |
 
 ## Management API
 

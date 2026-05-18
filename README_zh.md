@@ -6,7 +6,8 @@ FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务
 
 ## 架构
 
-- **服务端** (`server/main.py`): 基于 CLI 的服务端，使用 MySQL 存储数据、SMTP 邮箱验证、fp-multiuser 认证集成管理 FRP 隧道。
+- **服务端** (`server/main.py`): 基于 CLI 的服务端，使用 MySQL 存储数据、SMTP 邮箱验证、fp-multiuser 认证集成管理 FRP 隧道，以及可选的 Web 管理面板。
+- **Web 管理面板** (`server/web/web.py`): 基于 Flask 的浏览器管理界面，通过 HTTPS 管理用户、隧道、激活码和系统设置。
 - **客户端** (`client/client.py`): 桌面 GUI（tkinter），用户可注册、登录和管理隧道。
 
 ## 功能特点
@@ -19,6 +20,8 @@ FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务
 - **激活码**：管理员可生成带时长的激活码，用户输入后延长到期时间
 - **fp-multiuser 集成**：通过 REST API 自动生成和清理令牌
 - **HTTPS 通信**：服务端与客户端之间使用 HTTPS 协议
+- **Web 管理面板**：浏览器后台管理，支持管理员登录、用户/隧道/激活码 CRUD、批量操作、配置编辑和修改密码
+- **自动 SSL**：Web 管理面板自动生成自签 CA 和服务端证书，支持 CA 根证书下载
 - **子进程管理**：服务端管理 `frps` 和 `fp-multiuser.py`；客户端管理 `frpc.exe`
 
 ## 前置要求
@@ -48,9 +51,16 @@ FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务
 
 3. 启动服务端：
    ```bash
-   python main.py start
+   python main.py start            # 启动 API 服务、frps、fp-multiuser
+   python main.py start --web on   # 同时启动 Web 管理面板
    ```
-   将启动 HTTPS API 服务、fp-multiuser.py 和 frps 子进程。
+   将启动 HTTPS API 服务、fp-multiuser.py 和 frps 子进程。加 `--web on` 参数可同时启动浏览器管理面板。
+
+4. （可选）在使用 `--web on` 启动前，先配置 Web 管理面板：
+   ```bash
+   python main.py web setup
+   ```
+   按照提示设置管理员账号、密码、端口和 SSL 配置。
 
 ### 客户端配置
 
@@ -74,11 +84,12 @@ FRP 内网穿透多用户登录管理工具，包含 GUI 客户端和 CLI 服务
 | 命令 | 说明 |
 |---------|-------------|
 | `python main.py setup` | 初始配置 |
-| `python main.py start` | 启动服务端 |
+| `python main.py start` | 启动服务端（加 `--web on` 启用 Web 管理面板） |
 | `python main.py set-expiry <user_id> <YYYY-MM-DD HH:MM>` | 设置用户到期时间 |
 | `python main.py list-users` | 列出所有注册用户 |
 | `python main.py add-code <code> <DD-HH-MM>` | 添加激活码 |
 | `python main.py list-codes` | 列出所有激活码 |
+| `python main.py web setup` | 配置 Web 管理面板 |
 
 ### 设置用户到期时间
 
@@ -103,6 +114,63 @@ python main.py list-codes
 ```
 
 用户在客户端主面板点击 **激活** 按钮，输入激活码即可延长到期时间。若账户已到期，则从当前时间加上激活时长；若未到期，则在原到期时间上累加。
+
+## Web 管理面板
+
+服务端附带一个可选的浏览器管理面板，无需使用 CLI 或管理 API 即可管理系统。
+
+### 配置
+
+```bash
+python main.py web setup
+```
+
+按提示设置管理员用户名、密码、端口（默认 5000）、IP 限制和 SSL/HTTPS 配置。
+
+### 启动
+
+```bash
+python main.py start --web on
+```
+
+管理面板将在后台线程中与主 API 服务一同运行。
+
+### 访问
+
+| 协议 | URL |
+|------|-----|
+| HTTPS（默认） | `https://your-server:5000/` |
+| HTTP | `http://your-server:5000/` |
+
+如果使用自动生成的自签证书，浏览器会显示安全警告。可以在设置页面下载 CA 根证书来信任证书链。
+
+### 功能页面
+
+| 页面 | 说明 |
+|------|------|
+| **用户管理** | 创建、编辑、删除用户；可设置自定义用户 ID、邮箱、密码和到期时间 |
+| **隧道管理** | 创建、编辑、删除隧道；分配给用户；批量删除 |
+| **激活码** | 创建、编辑、删除激活码；批量生成（1-99 个）；批量删除；一键复制 |
+| **系统设置** | 在线编辑服务端配置和 Web 配置文件；修改管理员密码；下载 CA 证书 |
+
+### SSL / HTTPS
+
+- 启用 SSL 且未配置证书文件时，服务端首次启动会自动生成 CA 密钥对和由 CA 签名的服务端证书
+- CA 根证书可在设置页面下载，用于客户端信任配置
+- 可通过 `python main.py web setup` 或编辑 `server/web/web_config.json` 配置自定义证书
+
+### 配置文件
+
+Web 管理面板的配置存储在 `server/web/web_config.json`。主要配置项：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `port` | `5000` | 面板监听端口 |
+| `ssl.enabled` | `true` | 启用 HTTPS |
+| `ssl.self_signed` | `true` | 自动生成证书 |
+| `ssl.cert_file` | `""` | 自定义证书路径 |
+| `ssl.key_file` | `""` | 自定义密钥路径 |
+| `allowed_ips` | `[]` | IP 访问限制（空 = 无限制） |
 
 ## 管理 API
 
