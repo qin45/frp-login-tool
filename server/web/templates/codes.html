@@ -58,6 +58,7 @@ body { background: #f0f2f5; }
         <table class="table table-hover mb-0">
           <thead>
             <tr>
+              <th width="40"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
               <th>ID</th>
               <th>激活码</th>
               <th>时长</th>
@@ -71,8 +72,12 @@ body { background: #f0f2f5; }
           <tbody>
             {% for c in codes %}
             <tr>
+              <td><input type="checkbox" class="select-item" value="{{ c.id }}"></td>
               <td>{{ c.id }}</td>
-              <td><code>{{ c.code }}</code></td>
+              <td>
+                <code>{{ c.code }}</code>
+                <button class="btn btn-sm btn-link py-0" onclick="copyCode('{{ c.code }}', this)" title="复制"><i class="far fa-copy"></i></button>
+              </td>
               <td>{{ c.duration_days }}天 {{ c.duration_hours }}小时 {{ c.duration_minutes }}分</td>
               <td>{% if c.used %}<span class="badge bg-danger">是</span>{% else %}<span class="badge bg-success">否</span>{% endif %}</td>
               <td>{{ c.used_by or '-' }}</td>
@@ -90,10 +95,14 @@ body { background: #f0f2f5; }
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-4">暂无激活码数据</td></tr>
+            <tr><td colspan="9" class="text-center text-muted py-4">暂无激活码数据</td></tr>
             {% endfor %}
           </tbody>
         </table>
+      </div>
+      <div class="p-2 border-top d-flex align-items-center">
+        <button class="btn btn-sm btn-outline-danger" onclick="batchDeleteCodes()"><i class="fas fa-trash me-1"></i>批量删除</button>
+        <span class="text-muted ms-3 small" id="codeSelectedCount">已选择 0 项</span>
       </div>
     </div>
   </div>
@@ -346,6 +355,42 @@ document.getElementById('confirmDelete').addEventListener('click', function() {
     })
     .catch(err => { alert('删除失败: ' + err.message); this.disabled = false; });
 });
+
+function copyCode(code, btn) {
+  navigator.clipboard.writeText(code).then(() => {
+    const el = document.createElement('span');
+    el.className = 'text-success small ms-1';
+    el.textContent = '已复制';
+    btn.parentNode.appendChild(el);
+    setTimeout(() => el.remove(), 1500);
+  }).catch(() => {});
+}
+
+function toggleAll(master) {
+  document.querySelectorAll('.select-item').forEach(cb => cb.checked = master.checked);
+  updateCodeCount();
+}
+
+function updateCodeCount() {
+  const n = document.querySelectorAll('.select-item:checked').length;
+  document.getElementById('codeSelectedCount').textContent = '已选择 ' + n + ' 项';
+}
+document.querySelectorAll('.select-item').forEach(cb => cb.addEventListener('change', updateCodeCount));
+
+function batchDeleteCodes() {
+  const ids = Array.from(document.querySelectorAll('.select-item:checked')).map(cb => cb.value);
+  if (ids.length === 0) { alert('请先选择要删除的激活码'); return; }
+  if (!confirm('确定要删除选中的 ' + ids.length + ' 个激活码吗？')) return;
+  const data = new URLSearchParams();
+  data.append('ids', ids.join(','));
+  fetch('/api/web/code/batch-delete', { method: 'POST', body: data })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '删除失败');
+      location.reload();
+    })
+    .catch(err => { alert('批量删除失败: ' + err.message); });
+}
 </script>
 </body>
 </html>

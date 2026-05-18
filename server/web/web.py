@@ -241,6 +241,32 @@ def create_web_app(db, server_cfg):
             return jsonify({"error": err}), 400
         return jsonify({"status": "ok"})
 
+    @app.route("/api/web/tunnel/batch-delete", methods=["POST"])
+    @login_required
+    @admin_required
+    def web_batch_delete_tunnels():
+        data = request.form
+        ids_str = data.get("ids", "").strip()
+        if not ids_str:
+            return jsonify({"error": "ids required"}), 400
+        ids = []
+        for part in ids_str.split(","):
+            try:
+                ids.append(int(part.strip()))
+            except ValueError:
+                pass
+        if not ids:
+            return jsonify({"error": "Invalid ids"}), 400
+        deleted = 0
+        errors = []
+        for tid in ids:
+            ok, err = db.admin_delete_tunnel(tid)
+            if ok:
+                deleted += 1
+            else:
+                errors.append(err)
+        return jsonify({"status": "ok", "deleted": deleted, "errors": errors})
+
     # ==================== Activation Codes ====================
     @app.route("/codes")
     @login_required
@@ -349,6 +375,32 @@ def create_web_app(db, server_cfg):
                 errors.append(err)
         return jsonify({"status": "ok", "created": created, "errors": errors})
 
+    @app.route("/api/web/code/batch-delete", methods=["POST"])
+    @login_required
+    @admin_required
+    def web_batch_delete_codes():
+        data = request.form
+        ids_str = data.get("ids", "").strip()
+        if not ids_str:
+            return jsonify({"error": "ids required"}), 400
+        ids = []
+        for part in ids_str.split(","):
+            try:
+                ids.append(int(part.strip()))
+            except ValueError:
+                pass
+        if not ids:
+            return jsonify({"error": "Invalid ids"}), 400
+        deleted = 0
+        errors = []
+        for tid in ids:
+            ok, err = db.admin_delete_code(tid)
+            if ok:
+                deleted += 1
+            else:
+                errors.append(err)
+        return jsonify({"status": "ok", "deleted": deleted, "errors": errors})
+
     # ==================== Settings ====================
     @app.route("/settings")
     @login_required
@@ -405,16 +457,12 @@ def create_web_app(db, server_cfg):
     @admin_required
     def web_change_password():
         data = request.form
-        current = data.get("current_password", "").strip()
         new = data.get("new_password", "").strip()
-        if not current or not new:
-            return jsonify({"error": "Current and new password required"}), 400
+        if not new:
+            return jsonify({"error": "New password required"}), 400
         if len(new) < 6:
             return jsonify({"error": "New password must be >= 6 characters"}), 400
         cfg = load_web_config()
-        current_hash = hashlib.sha256(current.encode()).hexdigest()
-        if current_hash != cfg.get("password_hash"):
-            return jsonify({"error": "Current password is incorrect"}), 403
         cfg["password_hash"] = hashlib.sha256(new.encode()).hexdigest()
         save_web_config(cfg)
         return jsonify({"status": "ok", "message": "Password changed successfully"})

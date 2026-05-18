@@ -17,7 +17,6 @@ body { background: #f0f2f5; }
 .card { border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); border: none; }
 .table th { background: #f8f9fa; border-top: none; font-weight: 600; }
 .btn-sm i { margin-right: 4px; }
-.modal-header { background: #f8f9fa; border-radius: 10px 10px 0 0; }
 </style>
 </head>
 <body>
@@ -50,6 +49,7 @@ body { background: #f0f2f5; }
         <table class="table table-hover mb-0">
           <thead>
             <tr>
+              <th width="40"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
               <th>ID</th>
               <th>用户</th>
               <th>邮箱</th>
@@ -66,6 +66,7 @@ body { background: #f0f2f5; }
           <tbody>
             {% for t in tunnels %}
             <tr>
+              <td><input type="checkbox" class="select-item" value="{{ t.id }}"></td>
               <td>{{ t.id }}</td>
               <td><span class="badge bg-secondary">{{ t.user_id }}</span></td>
               <td>{{ t.email or '' }}</td>
@@ -86,10 +87,14 @@ body { background: #f0f2f5; }
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="11" class="text-center text-muted py-4">暂无隧道数据</td></tr>
+            <tr><td colspan="12" class="text-center text-muted py-4">暂无隧道数据</td></tr>
             {% endfor %}
           </tbody>
         </table>
+      </div>
+      <div class="p-2 border-top d-flex align-items-center">
+        <button class="btn btn-sm btn-outline-danger" onclick="batchDeleteTunnels()"><i class="fas fa-trash me-1"></i>批量删除</button>
+        <span class="text-muted ms-3 small" id="tunnelSelectedCount">已选择 0 项</span>
       </div>
     </div>
   </div>
@@ -279,6 +284,32 @@ document.getElementById('confirmDelete').addEventListener('click', function() {
     })
     .catch(err => { alert('删除失败: ' + err.message); this.disabled = false; });
 });
+
+function toggleAll(master) {
+  document.querySelectorAll('.select-item').forEach(cb => cb.checked = master.checked);
+  updateTunnelCount();
+}
+
+function updateTunnelCount() {
+  const n = document.querySelectorAll('.select-item:checked').length;
+  document.getElementById('tunnelSelectedCount').textContent = '已选择 ' + n + ' 项';
+}
+document.querySelectorAll('.select-item').forEach(cb => cb.addEventListener('change', updateTunnelCount));
+
+function batchDeleteTunnels() {
+  const ids = Array.from(document.querySelectorAll('.select-item:checked')).map(cb => cb.value);
+  if (ids.length === 0) { alert('请先选择要删除的隧道'); return; }
+  if (!confirm('确定要删除选中的 ' + ids.length + ' 条隧道吗？')) return;
+  const data = new URLSearchParams();
+  data.append('ids', ids.join(','));
+  fetch('/api/web/tunnel/batch-delete', { method: 'POST', body: data })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+      if (status !== 200) throw new Error(data.error || '删除失败');
+      location.reload();
+    })
+    .catch(err => { alert('批量删除失败: ' + err.message); });
+}
 </script>
 </body>
 </html>

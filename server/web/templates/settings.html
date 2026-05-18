@@ -90,10 +90,6 @@ textarea.json-editor { font-family: 'Consolas', 'Monaco', monospace; font-size: 
       <form id="passwordForm">
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label">当前密码 <span class="text-danger">*</span></label>
-            <input type="password" name="current_password" class="form-control" required>
-          </div>
-          <div class="mb-3">
             <label class="form-label">新密码 <span class="text-danger">*</span></label>
             <input type="password" name="new_password" class="form-control" required minlength="6">
             <div class="form-text">密码长度不得少于 6 位</div>
@@ -166,7 +162,6 @@ document.getElementById('passwordForm').addEventListener('submit', function(e) {
   }
   btn.disabled = true;
   const data = new URLSearchParams();
-  data.append('current_password', this.querySelector('[name="current_password"]').value);
   data.append('new_password', pwd);
   fetch('/api/web/settings/change-password', { method: 'POST', body: data })
     .then(r => r.json().then(d => ({status: r.status, data: d})))
