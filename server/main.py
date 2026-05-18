@@ -1106,6 +1106,37 @@ def create_app(db, email_sender, token_mgr, cfg):
             return jsonify({"error": err}), 400
         return jsonify({"status": "ok"})
 
+    @app.route("/api/tunnels/<int:tunnel_id>/update", methods=["POST"])
+    def update_tunnel(tunnel_id):
+        uid = validate_session(
+            request.headers.get("Authorization", "").replace("Bearer ", "")
+        )
+        if not uid:
+            return jsonify({"error": "Unauthorized"}), 401
+        # Verify the tunnel belongs to this user
+        tunnel = db.get_tunnel(tunnel_id)
+        if not tunnel or tunnel["user_id"] != uid:
+            return jsonify({"error": "Tunnel not found"}), 404
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body required"}), 400
+        name = data.get("name")
+        ttype = data.get("type")
+        local_ip = data.get("local_ip")
+        local_port = data.get("local_port")
+        if local_port is not None:
+            try:
+                local_port = int(local_port)
+            except ValueError:
+                return jsonify({"error": "local_port must be integer"}), 400
+        ok, result = db.admin_update_tunnel(
+            tunnel_id, name=name, tunnel_type=ttype,
+            local_ip=local_ip, local_port=local_port,
+        )
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({"status": "ok", "tunnel": result})
+
     @app.route("/api/user/activate", methods=["POST"])
     def activate_account():
         uid = validate_session(

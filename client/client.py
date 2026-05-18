@@ -97,6 +97,8 @@ LANGUAGES = {
         "tunnel_enabled": "已启用",
         "tunnel_disabled": "已禁用",
         "create_tunnel": "创建隧道",
+        "edit_tunnel": "修改隧道",
+        "edit": "修改",
         "enable": "启用",
         "disable": "禁用",
         "delete": "删除",
@@ -222,6 +224,8 @@ LANGUAGES = {
         "tunnel_enabled": "Enabled",
         "tunnel_disabled": "Disabled",
         "create_tunnel": "Create Tunnel",
+        "edit_tunnel": "Edit Tunnel",
+        "edit": "Edit",
         "enable": "Enable",
         "disable": "Disable",
         "delete": "Delete",
@@ -385,6 +389,18 @@ class ApiClient:
 
     def delete_tunnel(self, tunnel_id):
         return self._delete(f"/api/tunnels/{tunnel_id}")
+
+    def update_tunnel(self, tunnel_id, name=None, tunnel_type=None, local_ip=None, local_port=None):
+        data = {}
+        if name is not None:
+            data["name"] = name
+        if tunnel_type is not None:
+            data["type"] = tunnel_type
+        if local_ip is not None:
+            data["local_ip"] = local_ip
+        if local_port is not None:
+            data["local_port"] = local_port
+        return self._post(f"/api/tunnels/{tunnel_id}/update", data)
 
     def enable_tunnel(self, tunnel_id):
         return self._post(f"/api/tunnels/{tunnel_id}/enable")
@@ -1130,6 +1146,8 @@ class FrpLoginApp:
         action_frame.pack(fill=tk.X, pady=10)
         ttk.Button(action_frame, text=self._tr("create_tunnel"),
                    command=self._create_tunnel_dialog).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text=self._tr("edit"),
+                   command=self._edit_tunnel_dialog).pack(side=tk.LEFT, padx=5)
         ttk.Button(action_frame, text=self._tr("enable"),
                    command=self._enable_tunnel).pack(side=tk.LEFT, padx=5)
         ttk.Button(action_frame, text=self._tr("disable"),
@@ -1303,6 +1321,102 @@ class FrpLoginApp:
         btn_frame.grid(row=5, column=1, pady=15, sticky=tk.E)
         ttk.Button(btn_frame, text=self._tr("create"),
                    command=do_create).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._tr("cancel"),
+                   command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def _edit_tunnel_dialog(self):
+        tunnel = self._get_selected_tunnel()
+        if not tunnel:
+            return
+        # Parse local IP and port from the "local" column value (format "ip:port")
+        local_parts = tunnel["local"].rsplit(":", 1)
+        current_ip = local_parts[0] if len(local_parts) == 2 else "127.0.0.1"
+        current_port = local_parts[1] if len(local_parts) == 2 else local_parts[0]
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(self._tr("edit_tunnel"))
+        dialog.geometry("400x300")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text=self._tr("name_label")).grid(
+            row=0, column=0, sticky=tk.W, pady=5
+        )
+        name_var = tk.StringVar(value=tunnel["name"])
+        ttk.Entry(frame, textvariable=name_var, width=30).grid(
+            row=0, column=1, pady=5
+        )
+
+        ttk.Label(frame, text=self._tr("type_label")).grid(
+            row=1, column=0, sticky=tk.W, pady=5
+        )
+        type_var = tk.StringVar(value=tunnel["type"])
+        type_combo = ttk.Combobox(
+            frame, textvariable=type_var, values=["tcp", "udp"],
+            width=27, state="readonly"
+        )
+        type_combo.grid(row=1, column=1, pady=5)
+
+        ttk.Label(frame, text=self._tr("local_ip_label")).grid(
+            row=2, column=0, sticky=tk.W, pady=5
+        )
+        ip_var = tk.StringVar(value=current_ip)
+        ttk.Entry(frame, textvariable=ip_var, width=30).grid(
+            row=2, column=1, pady=5
+        )
+
+        ttk.Label(frame, text=self._tr("local_port_label")).grid(
+            row=3, column=0, sticky=tk.W, pady=5
+        )
+        port_var = tk.StringVar(value=current_port)
+        ttk.Entry(frame, textvariable=port_var, width=30).grid(
+            row=3, column=1, pady=5
+        )
+
+        err_var = tk.StringVar()
+        ttk.Label(frame, textvariable=err_var, foreground="red").grid(
+            row=4, column=0, columnspan=2, pady=5
+        )
+
+        def do_update():
+            name = name_var.get().strip()
+            ttype = type_var.get()
+            local_ip = ip_var.get().strip()
+            local_port = port_var.get().strip()
+            if not name or not local_port:
+                err_var.set(self._tr("name_port_required"))
+                return
+            try:
+                local_port = int(local_port)
+            except ValueError:
+                err_var.set(self._tr("port_must_be_number"))
+                return
+
+            def update_thread():
+                try:
+                    resp = self.api.update_tunnel(
+                        tunnel["id"], name=name, tunnel_type=ttype,
+                        local_ip=local_ip, local_port=local_port,
+                    )
+                    if resp.status_code == 200:
+                        self.root.after(0, lambda: [dialog.destroy(),
+                                                     self._refresh_data()])
+                    else:
+                        err = resp.json().get("error", self._tr("error"))
+                        self.root.after(0, lambda: err_var.set(err))
+                except requests.RequestException as e:
+                    self.root.after(0, lambda: err_var.set(str(e)))
+
+            threading.Thread(target=update_thread, daemon=True).start()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=5, column=1, pady=15, sticky=tk.E)
+        ttk.Button(btn_frame, text=self._tr("edit"),
+                   command=do_update).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text=self._tr("cancel"),
                    command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
