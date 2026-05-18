@@ -7,6 +7,7 @@ Supports Chinese and English languages.
 import hashlib
 import io
 import json
+import shutil
 import signal
 import subprocess
 import sys
@@ -26,6 +27,13 @@ FRPC_DIR = BASE_DIR / "frpc"
 FRPC_INI = FRPC_DIR / "frpc.ini"
 FRPC_EXE = FRPC_DIR / "frpc.exe"
 CONFIG_FILE = BASE_DIR / "client_config.json"
+
+# When frozen, copy bundled frpc.exe from _MEIPASS to writable runtime location
+if getattr(sys, 'frozen', False):
+    bundled_frpc = Path(sys._MEIPASS) / "frpc" / "frpc.exe"
+    if bundled_frpc.exists() and not FRPC_EXE.exists():
+        FRPC_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(bundled_frpc), str(FRPC_EXE))
 
 frpc_process = None
 frpc_process_lock = threading.Lock()
@@ -451,12 +459,19 @@ def start_frpc():
         if not FRPC_INI.exists():
             return False, "frpc.ini not found"
         try:
+            startupinfo = None
+            creationflags = 0
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                creationflags = subprocess.CREATE_NO_WINDOW
             frpc_process = subprocess.Popen(
                 [str(FRPC_EXE), "-c", str(FRPC_INI)],
                 cwd=str(FRPC_DIR),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
             )
 
             def log_output():
