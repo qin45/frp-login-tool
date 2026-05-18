@@ -96,6 +96,10 @@ def setup_config():
     ftps = {}
     ftps["ip"] = input("FRP Server IP: ").strip()
     ftps["port"] = int(input("FRP Server Port (default 7000): ").strip() or "7000")
+    port_start = input("Tunnel Port Range Start (default 20000): ").strip()
+    ftps["port_range_start"] = int(port_start) if port_start else 20000
+    port_end = input("Tunnel Port Range End (default 21000): ").strip()
+    ftps["port_range_end"] = int(port_end) if port_end else 21000
     cfg["ftps"] = ftps
 
     print("\n--- MySQL Database Configuration ---")
@@ -151,8 +155,10 @@ def setup_config():
 # Database
 # ============================================================
 class Database:
-    def __init__(self, mysql_cfg):
+    def __init__(self, mysql_cfg, port_range_start=20000, port_range_end=21000):
         self.cfg = mysql_cfg
+        self.port_range_start = port_range_start
+        self.port_range_end = port_range_end
         self.conn = None
         self._connect()
 
@@ -476,7 +482,7 @@ class Database:
             "SELECT remote_port FROM tunnels WHERE remote_port IS NOT NULL"
         )
         used_ports = {r["remote_port"] for r in used}
-        for port in range(20000, 21001):
+        for port in range(self.port_range_start, self.port_range_end + 1):
             if port not in used_ports:
                 return port
         return None
@@ -1285,7 +1291,12 @@ def cmd_start():
         print("Not configured. Run 'python main.py setup' first.")
         sys.exit(1)
     try:
-        db = Database(cfg["mysql"])
+        ftps = cfg.get("ftps", {})
+        db = Database(
+            cfg["mysql"],
+            ftps.get("port_range_start", 20000),
+            ftps.get("port_range_end", 21000),
+        )
         db.init_database()
         logger.info("Database initialized")
     except Exception as e:

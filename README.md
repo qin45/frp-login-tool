@@ -14,7 +14,7 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 - **User Registration & Login** via email with SMTP verification code
 - **Automatic User ID** assignment (`user0001`, `user0002`, ...)
 - **Tunnel Management**: each user can create up to 10 tunnels
-- **Automatic Port Allocation**: each tunnel gets a fixed port from 20000-21000
+- **Automatic Port Allocation**: each tunnel gets a fixed port from a configurable range (default 20000-21000)
 - **Expiration Control**: admin sets expiration per user; expired users lose access
 - **Activation Codes**: admin generates codes with custom durations to extend user expiration
 - **fp-multiuser Integration**: automatic token generation and cleanup via REST API
@@ -44,7 +44,7 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
    ```bash
    python main.py setup
    ```
-   Follow the prompts to configure SMTP, FTPS, MySQL, and HTTPS settings.
+   Follow the prompts to configure SMTP, FTPS (including tunnel port range), MySQL, and HTTPS settings.
 
 3. Start the server:
    ```bash
@@ -235,7 +235,7 @@ curl -X DELETE "http://localhost:8444/api/management/tunnel/1?key=your-secret-ke
 
 1. **Registration Flow**: User enters email → server sends verification code via SMTP → user verifies → account created with auto-generated ID.
 2. **Login Flow**: User logs in via email/password → receives session token → views account status and tunnels.
-3. **Tunnel Creation**: User creates a tunnel → server allocates a port from 20000-21000 → tunnel is stored in MySQL.
+3. **Tunnel Creation**: User creates a tunnel → server allocates a port from the configured range (default 20000-21000) → tunnel is stored in MySQL.
 4. **Tunnel Enable**: User enables a tunnel → server requests token from fp-multiuser API → client updates `frpc.ini` → client starts `frpc.exe` as subprocess.
 5. **Tunnel Disable**: User disables a tunnel → client sends SIGINT to `frpc.exe` → server marks tunnel as disabled.
 6. **Expiration Check**: Server checks every 60 seconds for expired users → removes their tokens via fp-multiuser API.
