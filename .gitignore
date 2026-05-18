@@ -2,5 +2,10 @@ __pycache__/
 *.pyc
 .claude/
 client/client_config.json
+client/build/
+client/dist/
+client/*.spec
 server/config.json
 server/frps/tokens
+release/
+test/
