@@ -1393,7 +1393,7 @@ def cmd_start(args=None):
             create_web_admin_app = None
 
         if create_web_admin_app:
-            web_app = create_web_admin_app(db, cfg)
+            web_app, web_ssl_ctx = create_web_admin_app(db, cfg)
             if web_app:
                 web_cfg_path = BASE_DIR / "web" / "web_config.json"
                 try:
@@ -1402,13 +1402,17 @@ def cmd_start(args=None):
                 except (IOError, json.JSONDecodeError):
                     web_cfg_data = {}
                 web_port = web_cfg_data.get("port", 5000)
+                web_run_kwargs = {"host": "0.0.0.0", "port": web_port, "debug": False, "threaded": True}
+                if web_ssl_ctx:
+                    web_run_kwargs["ssl_context"] = web_ssl_ctx
                 web_thread = threading.Thread(
                     target=web_app.run,
-                    kwargs={"host": "0.0.0.0", "port": web_port, "debug": False, "threaded": True},
+                    kwargs=web_run_kwargs,
                     daemon=True,
                 )
                 web_thread.start()
-                logger.info(f"Web admin panel started on port {web_port} (HTTP)")
+                proto = "HTTPS" if web_ssl_ctx else "HTTP"
+                logger.info(f"Web admin panel started on port {web_port} ({proto})")
             else:
                 logger.warning("Web admin panel not started (no web config). Run 'python main.py web setup' first.")
     else:

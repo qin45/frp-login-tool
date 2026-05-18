@@ -35,6 +35,142 @@ def save_web_config(cfg):
         json.dump(cfg, f, indent=4, ensure_ascii=False)
 
 
+def migrate_web_config(cfg):
+    """Fill in missing web config keys with defaults."""
+    defaults = {
+        "username": "admin",
+        "password_hash": "",
+        "port": 5000,
+        "allowed_ips": [],
+        "secret_key": secrets.token_hex(32),
+        "ssl": {
+            "enabled": True,
+            "self_signed": True,
+            "cert_file": "",
+            "key_file": "",
+            "ca_cert_file": "",
+        },
+    }
+
+    added = []
+    for key, val in defaults.items():
+        if key not in cfg:
+            cfg[key] = val
+            added.append(key)
+
+    # Handle nested ssl section
+    if "ssl" in cfg and not isinstance(cfg["ssl"], dict):
+        cfg["ssl"] = defaults["ssl"]
+        added.append("ssl (replaced)")
+    elif "ssl" in cfg:
+        for key, val in defaults["ssl"].items():
+            if key not in cfg["ssl"]:
+                cfg["ssl"][key] = val
+                added.append(f"ssl.{key}")
+
+    if added:
+        print(f"[Web Config] Missing keys filled with defaults: {', '.join(added)}")
+        save_web_config(cfg)
+    return cfg
+
+
+def ensure_web_ssl(cfg):
+    """Generate self-signed CA + server certificates if SSL enabled and no cert files configured."""
+    ssl_cfg = cfg.get("ssl", {})
+    if not ssl_cfg.get("enabled", True):
+        return None
+
+    cert_file = ssl_cfg.get("cert_file", "")
+    key_file = ssl_cfg.get("key_file", "")
+
+    # Already configured with valid files
+    if cert_file and key_file and os.path.isfile(cert_file) and os.path.isfile(key_file):
+        return (cert_file, key_file)
+
+    # Generate self-signed CA and server certs
+    ssl_dir = BASE_DIR / "ssl"
+    ssl_dir.mkdir(parents=True, exist_ok=True)
+    ca_cert_path = ssl_dir / "ca.crt"
+    ca_key_path = ssl_dir / "ca.key"
+    server_cert_path = ssl_dir / "cert.pem"
+    server_key_path = ssl_dir / "key.pem"
+
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        import datetime
+
+        # CA key
+        ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        ca_name = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "FRP Login Tool"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "FRP Web CA"),
+        ])
+        ca_cert = (
+            x509.CertificateBuilder()
+            .subject_name(ca_name)
+            .issuer_name(ca_name)
+            .public_key(ca_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.utcnow())
+            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=3650))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(ca_key, hashes.SHA256())
+        )
+        with open(ca_key_path, "wb") as f:
+            f.write(ca_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            ))
+        with open(ca_cert_path, "wb") as f:
+            f.write(ca_cert.public_bytes(serialization.Encoding.PEM))
+
+        # Server key + cert signed by CA
+        sv_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        sv_cert = (
+            x509.CertificateBuilder()
+            .subject_name(x509.Name([
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "FRP Login Tool"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "FRP Web Server"),
+            ]))
+            .issuer_name(ca_name)
+            .public_key(sv_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.utcnow())
+            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=3650))
+            .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
+            .sign(ca_key, hashes.SHA256())
+        )
+        with open(server_key_path, "wb") as f:
+            f.write(sv_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            ))
+        with open(server_cert_path, "wb") as f:
+            f.write(sv_cert.public_bytes(serialization.Encoding.PEM))
+
+        # Update config
+        cfg["ssl"]["cert_file"] = str(server_cert_path)
+        cfg["ssl"]["key_file"] = str(server_key_path)
+        cfg["ssl"]["ca_cert_file"] = str(ca_cert_path)
+        save_web_config(cfg)
+        print(f"[Web Config] Self-signed certificates generated in {ssl_dir}")
+        return (str(server_cert_path), str(server_key_path))
+
+    except ImportError:
+        print("[Web Config] cryptography not available, using adhoc SSL")
+        return "adhoc"
+    except Exception as e:
+        print(f"[Web Config] Failed to generate certificates: {e}, using adhoc SSL")
+        return "adhoc"
+
+
 def setup_web_config():
     """Interactive CLI to configure the admin web panel."""
     print("=" * 60)
@@ -49,16 +185,31 @@ def setup_web_config():
     cfg["port"] = int(input("Web Panel Port (default 5000): ").strip() or "5000")
     allowed = input("Allowed IPs (comma-separated, empty = no restriction): ").strip()
     cfg["allowed_ips"] = [ip.strip() for ip in allowed.split(",") if ip.strip()] if allowed else []
+    print("\n--- SSL Configuration ---")
+    ssl_enabled = input("Enable HTTPS? (Y/n): ").strip().lower() != "n"
+    ssl_cfg = {"enabled": ssl_enabled, "self_signed": True,
+               "cert_file": "", "key_file": "", "ca_cert_file": ""}
+    if ssl_enabled:
+        self_signed = input("Use self-signed certificate? (Y/n): ").strip().lower() != "n"
+        ssl_cfg["self_signed"] = self_signed
+        if not self_signed:
+            ssl_cfg["cert_file"] = input("SSL Certificate file path: ").strip()
+            ssl_cfg["key_file"] = input("SSL Key file path: ").strip()
+    cfg["ssl"] = ssl_cfg
     cfg["secret_key"] = secrets.token_hex(32)
     save_web_config(cfg)
     print(f"✓ Web config saved to {CONFIG_FILE}")
+    print("  Self-signed certificates will be auto-generated on startup if needed.")
 
 
 def create_web_app(db, server_cfg):
-    """Create the Flask admin web application."""
+    """Create the Flask admin web application. Returns (app, ssl_context)."""
     web_cfg = load_web_config()
     if not web_cfg:
-        return None
+        return None, None
+
+    web_cfg = migrate_web_config(web_cfg)
+    ssl_context = ensure_web_ssl(web_cfg)
 
     app = Flask(__name__,
                 template_folder=str(BASE_DIR / "templates"),
@@ -415,11 +566,15 @@ def create_web_app(db, server_cfg):
                 server_config = json.load(f)
         except (IOError, json.JSONDecodeError):
             server_config = {"error": "Cannot read server config"}
+        ssl_cfg = web_config.get("ssl", {})
         return render_template("settings.html",
                                server_config=json.dumps(server_config, indent=2, ensure_ascii=False),
                                web_config=json.dumps(web_config, indent=2, ensure_ascii=False),
                                server_cfg_path=server_cfg_path,
-                               web_cfg_path=web_cfg_path)
+                               web_cfg_path=web_cfg_path,
+                               ssl_enabled=ssl_cfg.get("enabled", True),
+                               is_self_signed=ssl_cfg.get("self_signed", True),
+                               ca_cert_available=bool(ssl_cfg.get("ca_cert_file", "")) and os.path.isfile(ssl_cfg["ca_cert_file"]))
 
     @app.route("/api/web/settings/server", methods=["POST"])
     @login_required
@@ -467,4 +622,18 @@ def create_web_app(db, server_cfg):
         save_web_config(cfg)
         return jsonify({"status": "ok", "message": "Password changed successfully"})
 
-    return app
+    # ==================== SSL / CA Cert ====================
+    @app.route("/api/web/settings/ca-cert")
+    @login_required
+    @admin_required
+    def web_download_ca_cert():
+        web_cfg = load_web_config()
+        ca_file = (web_cfg.get("ssl") or {}).get("ca_cert_file", "")
+        if ca_file and os.path.isfile(ca_file):
+            from flask import send_file
+            return send_file(ca_file, as_attachment=True,
+                             download_name="frp-web-ca.crt",
+                             mimetype="application/x-x509-ca-cert")
+        return jsonify({"error": "CA certificate not available"}), 404
+
+    return app, ssl_context

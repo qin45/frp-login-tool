@@ -48,6 +48,38 @@ textarea.json-editor { font-family: 'Consolas', 'Monaco', monospace; font-size: 
     </button>
   </div>
 
+  <!-- SSL Info -->
+  {% if ssl_enabled and is_self_signed and ca_cert_available %}
+  <div class="card mb-4 border-success">
+    <div class="card-header d-flex justify-content-between align-items-center text-success">
+      <span><i class="fas fa-shield-alt me-2"></i>SSL / HTTPS</span>
+      <span class="badge bg-success">已启用</span>
+    </div>
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <i class="fas fa-check-circle text-success me-2 fa-lg"></i>
+        <span>自签证书已配置，浏览器可能会提示不安全，请下载并信任 CA 根证书。</span>
+        <a href="/api/web/settings/ca-cert" class="btn btn-sm btn-outline-success ms-auto">
+          <i class="fas fa-download me-1"></i>下载 CA 根证书
+        </a>
+      </div>
+    </div>
+  </div>
+  {% elif ssl_enabled and not is_self_signed %}
+  <div class="card mb-4 border-success">
+    <div class="card-header d-flex justify-content-between align-items-center text-success">
+      <span><i class="fas fa-shield-alt me-2"></i>SSL / HTTPS</span>
+      <span class="badge bg-success">已启用</span>
+    </div>
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <i class="fas fa-check-circle text-success me-2 fa-lg"></i>
+        <span>自定义证书已配置。</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Server Config -->
   <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
