@@ -104,6 +104,85 @@ python main.py list-codes
 
 Users can enter activation codes in the client GUI by clicking the **Activate** button on the main dashboard. If the account is already expired, the activation duration is added from the current time; if still active, the duration is added to the existing expiration.
 
+### Management API
+
+The server provides a separate HTTP management API for automated administration. Configure it in `config.json` or during `python main.py setup`:
+
+```json
+{
+  "management_api": {
+    "enabled": true,
+    "port": 8444,
+    "allowed_ips": ["127.0.0.1"]
+  }
+}
+```
+
+All endpoints return JSON. If `allowed_ips` is configured, requests from other IPs are rejected with `403 Forbidden`.
+
+#### User Management
+
+**Create user**
+```bash
+curl -X POST http://localhost:8444/api/management/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"secret123","user_id":"custom001","expires_at":"2027-12-31 23:59"}'
+```
+`user_id` and `expires_at` are optional. Auto-generated user ID if omitted, default expiry is yesterday (account starts expired).
+
+**Update user**
+```bash
+curl -X PUT http://localhost:8444/api/management/user/user001 \
+  -H "Content-Type: application/json" \
+  -d '{"email":"new@example.com","password":"newpass","new_user_id":"new001","expires_at":"2027-12-31 23:59"}'
+```
+All fields optional — only provided fields are updated.
+
+#### Tunnel Management
+
+**Create tunnel**
+```bash
+curl -X POST http://localhost:8444/api/management/tunnel \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"user001","name":"ssh","type":"tcp","local_ip":"127.0.0.1","local_port":22,"remote_port":20001}'
+```
+`remote_port` is optional (auto-assigned from 20000-21000 if omitted).
+
+**Update tunnel**
+```bash
+curl -X PUT http://localhost:8444/api/management/tunnel/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"new-name","local_port":8080,"remote_port":20002}'
+```
+
+**Delete tunnel**
+```bash
+curl -X DELETE http://localhost:8444/api/management/tunnel/1
+```
+
+#### Activation Code Management
+
+**Create code**
+```bash
+curl -X POST http://localhost:8444/api/management/code \
+  -H "Content-Type: application/json" \
+  -d '{"code":"MYCODE","duration":"30-00-00"}'
+```
+Duration format: `DD-HH-MM`.
+
+**Update code**
+```bash
+curl -X PUT http://localhost:8444/api/management/code/1 \
+  -H "Content-Type: application/json" \
+  -d '{"code":"NEWCODE","duration":"60-00-00"}'
+```
+Cannot modify a used code.
+
+**Delete code**
+```bash
+curl -X DELETE http://localhost:8444/api/management/code/1
+```
+
 ## How It Works
 
 1. **Registration Flow**: User enters email → server sends verification code via SMTP → user verifies → account created with auto-generated ID.

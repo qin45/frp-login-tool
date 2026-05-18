@@ -121,6 +121,15 @@ def setup_config():
     fp["api_url"] = f"http://127.0.0.1:{fp['api_port']}"
     cfg["fp_multiuser"] = fp
 
+    print("\n--- Management API Configuration ---")
+    mgmt = {}
+    mgmt["enabled"] = input("Enable Management API? (Y/n): ").strip().lower() != "n"
+    if mgmt["enabled"]:
+        mgmt["port"] = int(input("Management API Port (default 8444): ").strip() or "8444")
+        allowed = input("Allowed IPs (comma-separated, empty = localhost only): ").strip()
+        mgmt["allowed_ips"] = [ip.strip() for ip in allowed.split(",") if ip.strip()] if allowed else ["127.0.0.1"]
+    cfg["management_api"] = mgmt
+
     cfg["configured"] = True
     save_config(cfg)
     print("\n✓ Configuration saved to config.json")
@@ -305,6 +314,145 @@ class Database:
 
     def list_activation_codes(self):
         return self._fetch_all("SELECT * FROM activation_codes ORDER BY id")
+
+    # ---- Management operations ----
+    def admin_create_user(self, user_id, email, password, expires_at):
+        existing = self._fetch_one("SELECT id FROM users WHERE email=%s", (email,))
+        if existing:
+            return False, "Email already in use"
+        if user_id:
+            existing_id = self._fetch_one("SELECT id FROM users WHERE user_id=%s", (user_id,))
+            if existing_id:
+                return False, "User ID already in use"
+        else:
+            user_id = self._generate_user_id()
+        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        self._execute(
+            "INSERT INTO users (user_id, email, password, verified, expires_at) "
+            "VALUES (%s, %s, %s, 1, %s)",
+            (user_id, email, pw_hash, expires_at),
+        )
+        return True, user_id
+
+    def admin_update_user(self, old_user_id, email=None, password=None, expires_at=None, new_user_id=None):
+        user = self.get_user_by_id(old_user_id)
+        if not user:
+            return False, "User not found"
+        if new_user_id and new_user_id != old_user_id:
+            existing = self._fetch_one("SELECT id FROM users WHERE user_id=%s", (new_user_id,))
+            if existing:
+                return False, "New user ID already in use"
+            self._execute("UPDATE users SET user_id=%s WHERE user_id=%s", (new_user_id, old_user_id))
+            old_user_id = new_user_id
+        if email is not None:
+            existing = self._fetch_one("SELECT id FROM users WHERE email=%s AND user_id!=%s", (email, old_user_id))
+            if existing:
+                return False, "Email already in use by another user"
+            self._execute("UPDATE users SET email=%s WHERE user_id=%s", (email, old_user_id))
+        if password is not None:
+            pw_hash = hashlib.sha256(password.encode()).hexdigest()
+            self._execute("UPDATE users SET password=%s WHERE user_id=%s", (pw_hash, old_user_id))
+        if expires_at is not None:
+            self._execute("UPDATE users SET expires_at=%s WHERE user_id=%s", (expires_at, old_user_id))
+        return True, self.get_user_by_id(old_user_id)
+
+    def admin_create_tunnel(self, user_id, name, tunnel_type, local_ip, local_port, remote_port):
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return False, "User not found"
+        count = self._fetch_one(
+            "SELECT COUNT(*) as cnt FROM tunnels WHERE user_id=%s", (user_id,)
+        )["cnt"]
+        if count >= 10:
+            return False, "User already has 10 tunnels"
+        if remote_port:
+            existing_port = self._fetch_one(
+                "SELECT id FROM tunnels WHERE remote_port=%s", (remote_port,)
+            )
+            if existing_port:
+                return False, f"Remote port {remote_port} already in use"
+        else:
+            remote_port = self.get_available_port()
+            if not remote_port:
+                return False, "No available ports in range 20000-21000"
+        self._execute(
+            "INSERT INTO tunnels (user_id, name, tunnel_type, local_ip, local_port, remote_port) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (user_id, name, tunnel_type, local_ip, local_port, remote_port),
+        )
+        tid = self._execute("SELECT LAST_INSERT_ID() as id").fetchone()["id"]
+        return True, self._fetch_one("SELECT * FROM tunnels WHERE id=%s", (tid,))
+
+    def admin_update_tunnel(self, tunnel_id, name=None, tunnel_type=None, local_ip=None,
+                            local_port=None, remote_port=None, user_id=None):
+        tunnel = self._fetch_one("SELECT * FROM tunnels WHERE id=%s", (tunnel_id,))
+        if not tunnel:
+            return False, "Tunnel not found"
+        if name is not None:
+            self._execute("UPDATE tunnels SET name=%s WHERE id=%s", (name, tunnel_id))
+        if tunnel_type is not None:
+            self._execute("UPDATE tunnels SET tunnel_type=%s WHERE id=%s", (tunnel_type, tunnel_id))
+        if local_ip is not None:
+            self._execute("UPDATE tunnels SET local_ip=%s WHERE id=%s", (local_ip, tunnel_id))
+        if local_port is not None:
+            self._execute("UPDATE tunnels SET local_port=%s WHERE id=%s", (local_port, tunnel_id))
+        if remote_port is not None:
+            existing = self._fetch_one(
+                "SELECT id FROM tunnels WHERE remote_port=%s AND id!=%s", (remote_port, tunnel_id)
+            )
+            if existing:
+                return False, f"Remote port {remote_port} already in use"
+            self._execute("UPDATE tunnels SET remote_port=%s WHERE id=%s", (remote_port, tunnel_id))
+        if user_id is not None:
+            user = self.get_user_by_id(user_id)
+            if not user:
+                return False, "New owner user not found"
+            self._execute("UPDATE tunnels SET user_id=%s WHERE id=%s", (user_id, tunnel_id))
+        return True, self._fetch_one("SELECT * FROM tunnels WHERE id=%s", (tunnel_id,))
+
+    def admin_delete_tunnel(self, tunnel_id):
+        tunnel = self._fetch_one("SELECT * FROM tunnels WHERE id=%s", (tunnel_id,))
+        if not tunnel:
+            return False, "Tunnel not found"
+        self._execute("DELETE FROM tunnels WHERE id=%s", (tunnel_id,))
+        return True, None
+
+    def admin_create_code(self, code, days, hours, minutes):
+        existing = self._fetch_one("SELECT id FROM activation_codes WHERE code=%s", (code,))
+        if existing:
+            return False, "Code already exists"
+        self._execute(
+            "INSERT INTO activation_codes (code, duration_days, duration_hours, duration_minutes) "
+            "VALUES (%s, %s, %s, %s)",
+            (code, days, hours, minutes),
+        )
+        return True, None
+
+    def admin_update_code(self, code_id, new_code=None, days=None, hours=None, minutes=None):
+        existing = self._fetch_one("SELECT * FROM activation_codes WHERE id=%s", (code_id,))
+        if not existing:
+            return False, "Code not found"
+        if existing["used"]:
+            return False, "Cannot modify a used code"
+        if new_code is not None:
+            dup = self._fetch_one("SELECT id FROM activation_codes WHERE code=%s AND id!=%s", (new_code, code_id))
+            if dup:
+                return False, "Code string already exists"
+            self._execute("UPDATE activation_codes SET code=%s WHERE id=%s", (new_code, code_id))
+        if days is not None:
+            self._execute("UPDATE activation_codes SET duration_days=%s WHERE id=%s", (days, code_id))
+        if hours is not None:
+            self._execute("UPDATE activation_codes SET duration_hours=%s WHERE id=%s", (hours, code_id))
+        if minutes is not None:
+            self._execute("UPDATE activation_codes SET duration_minutes=%s WHERE id=%s", (minutes, code_id))
+        return True, self._fetch_one("SELECT * FROM activation_codes WHERE id=%s", (code_id,))
+
+    def admin_delete_code(self, code_id):
+        existing = self._fetch_one("SELECT * FROM activation_codes WHERE id=%s", (code_id,))
+        if not existing:
+            return False, "Code not found"
+        self._execute("DELETE FROM activation_codes WHERE id=%s", (code_id,))
+        return True, None
 
     # ---- Tunnel operations ----
     def get_available_port(self):
@@ -896,6 +1044,180 @@ def create_app(db, email_sender, token_mgr, cfg):
 
 
 # ============================================================
+# Management API
+# ============================================================
+def check_ip(allowed_ips):
+    """Middleware factory: reject requests from non-allowed IPs."""
+    def decorator(f):
+        def wrapper(*args, **kwargs):
+            if allowed_ips:
+                remote = request.remote_addr or "127.0.0.1"
+                if remote not in allowed_ips:
+                    return jsonify({"error": "Forbidden: IP not allowed"}), 403
+            return f(*args, **kwargs)
+        wrapper.__name__ = f.__name__
+        return wrapper
+    return decorator
+
+
+def create_management_app(db, cfg):
+    mgmt_cfg = cfg.get("management_api", {})
+    allowed_ips = mgmt_cfg.get("allowed_ips", ["127.0.0.1"])
+    app = Flask(__name__)
+
+    # ---- User management ----
+    @app.route("/api/management/user", methods=["POST"])
+    @check_ip(allowed_ips)
+    def mgmt_create_user():
+        data = request.get_json()
+        if not data or not data.get("email") or not data.get("password"):
+            return jsonify({"error": "email and password required"}), 400
+        email = data["email"].strip().lower()
+        password = data["password"]
+        user_id = data.get("user_id", "").strip() or None
+        expires_at = data.get("expires_at")
+        if expires_at:
+            try:
+                expires_at = datetime.strptime(expires_at, "%Y-%m-%d %H:%M")
+            except ValueError:
+                return jsonify({"error": "expires_at must be YYYY-MM-DD HH:MM"}), 400
+        else:
+            expires_at = datetime.now() - timedelta(days=1)
+        ok, result = db.admin_create_user(user_id, email, password, expires_at)
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({"status": "ok", "user_id": result}), 201
+
+    @app.route("/api/management/user/<user_id>", methods=["PUT"])
+    @check_ip(allowed_ips)
+    def mgmt_update_user(user_id):
+        data = request.get_json() or {}
+        email = data.get("email")
+        password = data.get("password")
+        expires_at = data.get("expires_at")
+        new_user_id = data.get("new_user_id")
+        if email is not None:
+            email = email.strip().lower()
+        if expires_at is not None:
+            try:
+                expires_at = datetime.strptime(expires_at, "%Y-%m-%d %H:%M")
+            except ValueError:
+                return jsonify({"error": "expires_at must be YYYY-MM-DD HH:MM"}), 400
+        ok, result = db.admin_update_user(user_id, email, password, expires_at, new_user_id)
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({"status": "ok", "user": {
+            "user_id": result["user_id"],
+            "email": result["email"],
+            "expires_at": result["expires_at"].isoformat() if result["expires_at"] else None,
+        }})
+
+    # ---- Tunnel management ----
+    @app.route("/api/management/tunnel", methods=["POST"])
+    @check_ip(allowed_ips)
+    def mgmt_create_tunnel():
+        data = request.get_json()
+        if not data or not data.get("user_id") or not data.get("name") or not data.get("local_port"):
+            return jsonify({"error": "user_id, name, and local_port required"}), 400
+        try:
+            local_port = int(data["local_port"])
+        except ValueError:
+            return jsonify({"error": "local_port must be integer"}), 400
+        remote_port = data.get("remote_port")
+        if remote_port is not None:
+            try:
+                remote_port = int(remote_port)
+            except ValueError:
+                return jsonify({"error": "remote_port must be integer"}), 400
+        ok, result = db.admin_create_tunnel(
+            data["user_id"], data["name"].strip(),
+            data.get("type", "tcp"), data.get("local_ip", "127.0.0.1"),
+            local_port, remote_port,
+        )
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({"status": "ok", "tunnel": result}), 201
+
+    @app.route("/api/management/tunnel/<int:tunnel_id>", methods=["PUT"])
+    @check_ip(allowed_ips)
+    def mgmt_update_tunnel(tunnel_id):
+        data = request.get_json() or {}
+        name = data.get("name")
+        ttype = data.get("type")
+        local_ip = data.get("local_ip")
+        local_port = data.get("local_port")
+        remote_port = data.get("remote_port")
+        user_id = data.get("user_id")
+        if local_port is not None:
+            try:
+                local_port = int(local_port)
+            except ValueError:
+                return jsonify({"error": "local_port must be integer"}), 400
+        if remote_port is not None:
+            try:
+                remote_port = int(remote_port)
+            except ValueError:
+                return jsonify({"error": "remote_port must be integer"}), 400
+        ok, result = db.admin_update_tunnel(tunnel_id, name, ttype, local_ip, local_port, remote_port, user_id)
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({"status": "ok", "tunnel": result})
+
+    @app.route("/api/management/tunnel/<int:tunnel_id>", methods=["DELETE"])
+    @check_ip(allowed_ips)
+    def mgmt_delete_tunnel(tunnel_id):
+        ok, err = db.admin_delete_tunnel(tunnel_id)
+        if not ok:
+            return jsonify({"error": err}), 400
+        return jsonify({"status": "ok"})
+
+    # ---- Activation code management ----
+    @app.route("/api/management/code", methods=["POST"])
+    @check_ip(allowed_ips)
+    def mgmt_create_code():
+        data = request.get_json()
+        if not data or not data.get("code"):
+            return jsonify({"error": "code required"}), 400
+        try:
+            parts = data.get("duration", "0-0-0").split("-")
+            days, hours, minutes = int(parts[0]), int(parts[1]), int(parts[2])
+        except (ValueError, IndexError):
+            return jsonify({"error": "duration must be DD-HH-MM format"}), 400
+        ok, err = db.admin_create_code(data["code"].strip(), days, hours, minutes)
+        if not ok:
+            return jsonify({"error": err}), 400
+        return jsonify({"status": "ok"}), 201
+
+    @app.route("/api/management/code/<int:code_id>", methods=["PUT"])
+    @check_ip(allowed_ips)
+    def mgmt_update_code(code_id):
+        data = request.get_json() or {}
+        new_code = data.get("code")
+        duration = data.get("duration")
+        days = hours = minutes = None
+        if duration:
+            try:
+                parts = duration.split("-")
+                days, hours, minutes = int(parts[0]), int(parts[1]), int(parts[2])
+            except (ValueError, IndexError):
+                return jsonify({"error": "duration must be DD-HH-MM format"}), 400
+        ok, result = db.admin_update_code(code_id, new_code, days, hours, minutes)
+        if not ok:
+            return jsonify({"error": result}), 400
+        return jsonify({"status": "ok", "code": result})
+
+    @app.route("/api/management/code/<int:code_id>", methods=["DELETE"])
+    @check_ip(allowed_ips)
+    def mgmt_delete_code(code_id):
+        ok, err = db.admin_delete_code(code_id)
+        if not ok:
+            return jsonify({"error": err}), 400
+        return jsonify({"status": "ok"})
+
+    return app
+
+
+# ============================================================
 # CLI Commands
 # ============================================================
 def cmd_setup():
@@ -934,6 +1256,19 @@ def cmd_start():
             logger.warning(f"SSL files not found (cert={cert_file}, key={key_file}), "
                            "falling back to auto-generated self-signed certificate")
         ssl_ctx = "adhoc"
+    # Start management API in a separate thread (if enabled)
+    mgmt_cfg = cfg.get("management_api", {})
+    if mgmt_cfg.get("enabled", False):
+        mgmt_port = mgmt_cfg.get("port", 8444)
+        mgmt_app = create_management_app(db, cfg)
+        mgmt_thread = threading.Thread(
+            target=mgmt_app.run,
+            kwargs={"host": "0.0.0.0", "port": mgmt_port, "debug": False, "threaded": True},
+            daemon=True,
+        )
+        mgmt_thread.start()
+        logger.info(f"Management API started on port {mgmt_port} (HTTP)")
+
     logger.info(f"Starting API server on port {port} (HTTPS)...")
     try:
         app.run(host="0.0.0.0", port=port, ssl_context=ssl_ctx, debug=False, threaded=True)

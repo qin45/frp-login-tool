@@ -104,6 +104,85 @@ python main.py list-codes
 
 用户在客户端主面板点击 **激活** 按钮，输入激活码即可延长到期时间。若账户已到期，则从当前时间加上激活时长；若未到期，则在原到期时间上累加。
 
+### 管理 API
+
+服务端提供独立的 HTTP 管理 API，用于自动化管理。可在 `config.json` 或 `python main.py setup` 中配置：
+
+```json
+{
+  "management_api": {
+    "enabled": true,
+    "port": 8444,
+    "allowed_ips": ["127.0.0.1"]
+  }
+}
+```
+
+所有端点返回 JSON。如配置了 `allowed_ips`，其他 IP 的请求将被拒绝（`403 Forbidden`）。
+
+#### 用户管理
+
+**创建用户**
+```bash
+curl -X POST http://localhost:8444/api/management/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"secret123","user_id":"custom001","expires_at":"2027-12-31 23:59"}'
+```
+`user_id` 和 `expires_at` 可选。不传 `user_id` 则自动生成，默认到期时间为昨天（账号创建后为到期状态）。
+
+**修改用户**
+```bash
+curl -X PUT http://localhost:8444/api/management/user/user001 \
+  -H "Content-Type: application/json" \
+  -d '{"email":"new@example.com","password":"newpass","new_user_id":"new001","expires_at":"2027-12-31 23:59"}'
+```
+所有字段可选，仅更新传入的字段。
+
+#### 隧道管理
+
+**创建隧道**
+```bash
+curl -X POST http://localhost:8444/api/management/tunnel \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"user001","name":"ssh","type":"tcp","local_ip":"127.0.0.1","local_port":22,"remote_port":20001}'
+```
+`remote_port` 可选，不传则自动分配（20000-21000）。
+
+**修改隧道**
+```bash
+curl -X PUT http://localhost:8444/api/management/tunnel/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"new-name","local_port":8080,"remote_port":20002}'
+```
+
+**删除隧道**
+```bash
+curl -X DELETE http://localhost:8444/api/management/tunnel/1
+```
+
+#### 激活码管理
+
+**创建激活码**
+```bash
+curl -X POST http://localhost:8444/api/management/code \
+  -H "Content-Type: application/json" \
+  -d '{"code":"MYCODE","duration":"30-00-00"}'
+```
+时长格式为 `DD-HH-MM`。
+
+**修改激活码**
+```bash
+curl -X PUT http://localhost:8444/api/management/code/1 \
+  -H "Content-Type: application/json" \
+  -d '{"code":"NEWCODE","duration":"60-00-00"}'
+```
+已使用的激活码不可修改。
+
+**删除激活码**
+```bash
+curl -X DELETE http://localhost:8444/api/management/code/1
+```
+
 ## 工作原理
 
 1. **注册流程**：用户输入邮箱 → 服务端通过 SMTP 发送验证码 → 用户验证 → 账号创建成功，自动生成用户 ID。
