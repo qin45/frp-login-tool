@@ -931,6 +931,8 @@ class FrpLoginApp:
             return
         self.api.set_server(url)
         self.api.set_ssl_verify(not self.disable_ssl_var.get())
+        self.api.cfg["disable_ssl_verify"] = self.disable_ssl_var.get()
+        save_client_config(self.api.cfg)
         self.server_status_var.set(self._tr("testing_connection"))
         self.root.update()
 
@@ -953,9 +955,8 @@ class FrpLoginApp:
 
     def _toggle_ssl_verify(self):
         disabled = self.disable_ssl_var.get()
-        cfg = load_client_config()
-        cfg["disable_ssl_verify"] = disabled
-        save_client_config(cfg)
+        self.api.cfg["disable_ssl_verify"] = disabled
+        save_client_config(self.api.cfg)
         self.api.set_ssl_verify(not disabled)
 
     def _try_auto_login(self):
