@@ -68,6 +68,7 @@ LANGUAGES = {
         "testing_connection": "正在测试连接...",
         "connection_failed": "连接失败:",
         "server_responded": "服务器响应",
+        "disable_ssl_verify": "禁用SSL证书验证",
         # Login / Register
         "login": "登录",
         "register": "注册",
@@ -199,6 +200,7 @@ LANGUAGES = {
         "testing_connection": "Testing connection...",
         "connection_failed": "Connection failed:",
         "server_responded": "Server responded",
+        "disable_ssl_verify": "Disable SSL Verify",
         "login": "Login",
         "register": "Register",
         "email": "Email:",
@@ -325,16 +327,26 @@ class ApiClient:
     def __init__(self):
         self.base_url = ""
         self.session_token = ""
+        self._verify = True
         self.cfg = load_client_config()
         if "server_url" in self.cfg:
             self.base_url = self.cfg["server_url"]
         if "session_token" in self.cfg:
             self.session_token = self.cfg["session_token"]
+        if "disable_ssl_verify" in self.cfg:
+            self._verify = not self.cfg["disable_ssl_verify"]
 
     def set_server(self, server_url):
         self.base_url = server_url.rstrip("/")
         self.cfg["server_url"] = self.base_url
         save_client_config(self.cfg)
+
+    def set_ssl_verify(self, enabled):
+        self._verify = enabled
+
+    @property
+    def ssl_verify_enabled(self):
+        return self._verify
 
     def _headers(self):
         h = {"Content-Type": "application/json"}
@@ -344,15 +356,15 @@ class ApiClient:
 
     def _post(self, path, data=None):
         url = f"{self.base_url}{path}"
-        return requests.post(url, json=data, headers=self._headers(), verify=False, timeout=15)
+        return requests.post(url, json=data, headers=self._headers(), verify=self._verify, timeout=15)
 
     def _get(self, path):
         url = f"{self.base_url}{path}"
-        return requests.get(url, headers=self._headers(), verify=False, timeout=15)
+        return requests.get(url, headers=self._headers(), verify=self._verify, timeout=15)
 
     def _delete(self, path):
         url = f"{self.base_url}{path}"
-        return requests.delete(url, headers=self._headers(), verify=False, timeout=15)
+        return requests.delete(url, headers=self._headers(), verify=self._verify, timeout=15)
 
     def register_send_code(self, email):
         return self._post("/api/auth/register", {"email": email})
@@ -781,9 +793,17 @@ class FrpLoginApp:
         )
         ttk.Button(server_frame, text=self._tr("connect"),
                    command=self._check_server).grid(row=0, column=2, padx=5)
+        self.disable_ssl_var = tk.BooleanVar(
+            value=self.api.cfg.get("disable_ssl_verify", False)
+        )
+        ttk.Checkbutton(server_frame, text=self._tr("disable_ssl_verify"),
+                        variable=self.disable_ssl_var,
+                        command=self._toggle_ssl_verify).grid(
+            row=0, column=3, padx=5
+        )
         self.server_status_var = tk.StringVar(value="")
         ttk.Label(server_frame, textvariable=self.server_status_var,
-                  foreground="gray").grid(row=1, column=0, columnspan=3,
+                  foreground="gray").grid(row=1, column=0, columnspan=4,
                                           sticky=tk.W, padx=5)
 
         # Login/Register/Reset Password Notebook
@@ -909,6 +929,7 @@ class FrpLoginApp:
             self.server_status_var.set(self._tr("enter_server_url"))
             return
         self.api.set_server(url)
+        self.api.set_ssl_verify(not self.disable_ssl_var.get())
         self.server_status_var.set(self._tr("testing_connection"))
         self.root.update()
 
@@ -928,6 +949,13 @@ class FrpLoginApp:
                 self.server_status_var.set(f"{tr_fail} {e}")
 
         threading.Thread(target=test, daemon=True).start()
+
+    def _toggle_ssl_verify(self):
+        disabled = self.disable_ssl_var.get()
+        cfg = load_client_config()
+        cfg["disable_ssl_verify"] = disabled
+        save_client_config(cfg)
+        self.api.set_ssl_verify(not disabled)
 
     def _try_auto_login(self):
         threading.Thread(target=self._auto_login_thread, daemon=True).start()
