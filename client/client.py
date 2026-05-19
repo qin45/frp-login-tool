@@ -37,6 +37,7 @@ if getattr(sys, 'frozen', False):
 
 frpc_process = None
 frpc_process_lock = threading.Lock()
+frpc_log_thread = None
 
 # ============================================================
 # Language Support
@@ -462,7 +463,7 @@ remote_port = {remote_port}
 
 
 def start_frpc():
-    global frpc_process
+    global frpc_process, frpc_log_thread
     with frpc_process_lock:
         if frpc_process and frpc_process.poll() is None:
             return True, "frpc already running"
@@ -493,33 +494,44 @@ def start_frpc():
                     else:
                         break
 
-            threading.Thread(target=log_output, daemon=True).start()
+            frpc_log_thread = threading.Thread(target=log_output, daemon=False)
+            frpc_log_thread.start()
             return True, f"frpc started (PID {frpc_process.pid})"
         except Exception as e:
             return False, str(e)
 
 
 def stop_frpc():
-    global frpc_process
+    global frpc_process, frpc_log_thread
     with frpc_process_lock:
-        if not frpc_process or frpc_process.poll() is not None:
+        frpc_was_running = frpc_process is not None and frpc_process.poll() is None
+        if frpc_process and frpc_process.poll() is None:
+            try:
+                if sys.platform == "win32":
+                    frpc_process.terminate()
+                else:
+                    frpc_process.send_signal(signal.SIGINT)
+                frpc_process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                frpc_process.kill()
+                frpc_process.wait()
+            except Exception:
+                pass
+            finally:
+                try:
+                    frpc_process.stdout.close()
+                except Exception:
+                    pass
+                frpc_process = None
+        else:
             frpc_process = None
-            return True, "frpc not running"
-        try:
-            if sys.platform == "win32":
-                frpc_process.terminate()
-            else:
-                frpc_process.send_signal(signal.SIGINT)
-            frpc_process.wait(timeout=10)
-            frpc_process = None
+        # Join the log thread so it doesn't cause interpreter shutdown errors
+        if frpc_log_thread and frpc_log_thread.is_alive():
+            frpc_log_thread.join(timeout=3)
+        frpc_log_thread = None
+        if frpc_was_running:
             return True, "frpc stopped"
-        except subprocess.TimeoutExpired:
-            frpc_process.kill()
-            frpc_process.wait()
-            frpc_process = None
-            return True, "frpc force killed"
-        except Exception as e:
-            return False, str(e)
+        return True, "frpc not running"
 
 
 def is_frpc_running():
@@ -682,9 +694,21 @@ class FrpLoginApp:
             self._refresh_timer = None
 
     def _on_close(self):
-        self._disable_all_tunnels()
+        try:
+            if self._refresh_timer:
+                self.root.after_cancel(self._refresh_timer)
+                self._refresh_timer = None
+        except Exception:
+            pass
+        try:
+            self._disable_all_tunnels()
+        except Exception:
+            pass
         stop_frpc()
-        self.root.destroy()
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
     def _ensure_frpc_core(self):
         """Check if frpc.exe exists; if not, prompt to download and extract it."""
