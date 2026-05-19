@@ -803,8 +803,9 @@ class FrpLoginApp:
         )
         self.server_status_var = tk.StringVar(value="")
         ttk.Label(server_frame, textvariable=self.server_status_var,
-                  foreground="gray").grid(row=1, column=0, columnspan=4,
-                                          sticky=tk.W, padx=5)
+                  foreground="gray", wraplength=450).grid(
+            row=1, column=0, columnspan=4, sticky=tk.W, padx=5
+        )
 
         # Login/Register/Reset Password Notebook
         notebook = ttk.Notebook(self.login_frame)
