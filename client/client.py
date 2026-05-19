@@ -1017,7 +1017,7 @@ class FrpLoginApp:
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self.send_code_btn.configure(state=tk.NORMAL))
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     def _start_send_code_cooldown(self):
         self._cooldown_sec = 60
@@ -1059,7 +1059,7 @@ class FrpLoginApp:
                 err = self._tr_error(resp.json().get("error", self._tr("registration_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     # ---- Reset Password ----
     def _send_reset_code(self):
@@ -1083,7 +1083,7 @@ class FrpLoginApp:
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda: self.reset_send_code_btn.configure(state=tk.NORMAL))
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     def _start_reset_code_cooldown(self):
         self._reset_cooldown_sec = 60
@@ -1127,7 +1127,7 @@ class FrpLoginApp:
                 err = self._tr_error(resp.json().get("error", self._tr("reset_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     def _login(self):
         email = self.login_email_var.get().strip()
@@ -1159,7 +1159,7 @@ class FrpLoginApp:
                 err = self._tr_error(resp.json().get("error", self._tr("login_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     # ============================
     # Main Dashboard
@@ -1411,7 +1411,7 @@ class FrpLoginApp:
                         err = self._tr_error(resp.json().get("error", self._tr("error")))
                         self.root.after(0, lambda: err_var.set(err))
                 except requests.RequestException as e:
-                    self.root.after(0, lambda: err_var.set(str(e)))
+                    self.root.after(0, lambda e=e: err_var.set(str(e)))
 
             threading.Thread(target=create_thread, daemon=True).start()
 
@@ -1512,7 +1512,7 @@ class FrpLoginApp:
                         err = resp.json().get("error", self._tr("error"))
                         self.root.after(0, lambda: err_var.set(err))
                 except requests.RequestException as e:
-                    self.root.after(0, lambda: err_var.set(str(e)))
+                    self.root.after(0, lambda e=e: err_var.set(str(e)))
 
             threading.Thread(target=update_thread, daemon=True).start()
 
@@ -1577,7 +1577,7 @@ class FrpLoginApp:
                     0, lambda: self._show_error("error", err_msg)
                 )
         except requests.RequestException as e:
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     def _disable_tunnel(self):
         tunnel = self._get_selected_tunnel()
@@ -1603,7 +1603,7 @@ class FrpLoginApp:
                 self._refresh_data(),
             ])
         except requests.RequestException as e:
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     def _delete_tunnel(self):
         tunnel = self._get_selected_tunnel()
@@ -1627,7 +1627,7 @@ class FrpLoginApp:
                 err = self._tr_error(resp.json().get("error", self._tr("delete_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
-            self.root.after(0, lambda: self._show_error("error", str(e)))
+            self.root.after(0, lambda e=e: self._show_error("error", str(e)))
 
     def _activate_account(self):
         dialog = tk.Toplevel(self.root)
@@ -1674,7 +1674,7 @@ class FrpLoginApp:
                         err = self._tr_error(resp.json().get("error", self._tr("activation_failed")))
                         self.root.after(0, lambda: err_var.set(err))
                 except requests.RequestException as e:
-                    self.root.after(0, lambda: err_var.set(str(e)))
+                    self.root.after(0, lambda e=e: err_var.set(str(e)))
 
             threading.Thread(target=activate_thread, daemon=True).start()
 
