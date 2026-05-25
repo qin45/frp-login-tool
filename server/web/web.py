@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
+import bcrypt
+
 from flask import Flask, request, jsonify, render_template, redirect, session, url_for
 
 BASE_DIR = Path(__file__).parent.resolve()
@@ -273,12 +275,12 @@ def setup_web_config():
     if password:
         while len(password) < 6:
             password = input("Password must be >= 6 characters, try again: ").strip()
-        cfg["password_hash"] = hashlib.sha256(password.encode()).hexdigest()
+        cfg["password_hash"] = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     elif "password_hash" not in cfg:
         password = input("Admin Password (required): ").strip()
         while not password:
             password = input("Admin Password (required): ").strip()
-        cfg["password_hash"] = hashlib.sha256(password.encode()).hexdigest()
+        cfg["password_hash"] = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     cfg["port"] = int(input(f"Web Panel Port (default {cfg.get('port', 5000)}): ").strip() or cfg.get("port", 5000))
     allowed = input("Allowed IPs (comma-separated, empty = no restriction): ").strip()
     cfg["allowed_ips"] = [ip.strip() for ip in allowed.split(",") if ip.strip()] if allowed else cfg.get("allowed_ips", [])
@@ -348,10 +350,15 @@ def create_web_app(db, server_cfg):
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "").strip()
-            pw_hash = hashlib.sha256(password.encode()).hexdigest()
-            if username == web_cfg.get("username") and pw_hash == web_cfg.get("password_hash"):
-                session["logged_in"] = True
-                return redirect(url_for("users"))
+            stored_hash = web_cfg.get("password_hash", "")
+            if username == web_cfg.get("username"):
+                try:
+                    pw_ok = bcrypt.checkpw(password.encode(), stored_hash.encode())
+                except ValueError:
+                    pw_ok = hashlib.sha256(password.encode()).hexdigest() == stored_hash
+                if pw_ok:
+                    session["logged_in"] = True
+                    return redirect(url_for("users"))
             return render_template("login.html", error="用户名或密码错误")
         return render_template("login.html", ssl_enabled=ssl_active)
 
@@ -713,7 +720,7 @@ def create_web_app(db, server_cfg):
         if len(new) < 6:
             return jsonify({"error": "New password must be >= 6 characters"}), 400
         cfg = load_web_config()
-        cfg["password_hash"] = hashlib.sha256(new.encode()).hexdigest()
+        cfg["password_hash"] = bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode()
         save_web_config(cfg)
         return jsonify({"status": "ok", "message": "Password changed successfully"})
 
