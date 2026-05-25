@@ -315,6 +315,68 @@ class Database:
             except pymysql.err.OperationalError:
                 pass
 
+        # Verify table structure — add any missing columns
+        self._verify_columns()
+
+    # ---- Table structure verification ----
+    def _verify_columns(self):
+        """Check that all expected columns exist in each table; add missing ones."""
+        expected = {
+            "users": [
+                ("id", "INT AUTO_INCREMENT PRIMARY KEY"),
+                ("user_id", "VARCHAR(10)"),
+                ("email", "VARCHAR(255) NOT NULL"),
+                ("password", "VARCHAR(255) NOT NULL DEFAULT ''"),
+                ("verified", "TINYINT(1) DEFAULT 0"),
+                ("expires_at", "DATETIME NOT NULL"),
+                ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+                ("token", "VARCHAR(255) DEFAULT NULL"),
+                ("token_expires_at", "DATETIME DEFAULT NULL"),
+            ],
+            "tunnels": [
+                ("id", "INT AUTO_INCREMENT PRIMARY KEY"),
+                ("user_id", "VARCHAR(10) NOT NULL"),
+                ("name", "VARCHAR(100) NOT NULL"),
+                ("tunnel_type", "VARCHAR(10) DEFAULT 'tcp'"),
+                ("local_ip", "VARCHAR(255) DEFAULT '127.0.0.1'"),
+                ("local_port", "INT NOT NULL"),
+                ("remote_port", "INT"),
+                ("enabled", "TINYINT(1) DEFAULT 0"),
+                ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+            ],
+            "activation_codes": [
+                ("id", "INT AUTO_INCREMENT PRIMARY KEY"),
+                ("code", "VARCHAR(255) NOT NULL"),
+                ("duration_days", "INT NOT NULL DEFAULT 0"),
+                ("duration_hours", "INT NOT NULL DEFAULT 0"),
+                ("duration_minutes", "INT NOT NULL DEFAULT 0"),
+                ("used", "TINYINT(1) DEFAULT 0"),
+                ("used_by", "VARCHAR(10)"),
+                ("used_at", "DATETIME"),
+                ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+            ],
+        }
+        for table, columns in expected.items():
+            try:
+                existing = {
+                    row["Field"]
+                    for row in self._fetch_all(f"SHOW COLUMNS FROM `{table}`")
+                }
+            except pymysql.err.ProgrammingError:
+                continue  # table doesn't exist, skip
+            missing = [col for col, _ in columns if col not in existing]
+            if not missing:
+                continue
+            logging.info(f"Adding missing columns to {table}: {missing}")
+            for col_name, col_def in columns:
+                if col_name not in existing:
+                    try:
+                        self._execute(
+                            f"ALTER TABLE `{table}` ADD COLUMN `{col_name}` {col_def}"
+                        )
+                    except pymysql.err.OperationalError as e:
+                        logging.warning(f"Failed to add column {table}.{col_name}: {e}")
+
     # ---- User operations ----
     def create_user(self, email, password_hash):
         # Check if email already registered
