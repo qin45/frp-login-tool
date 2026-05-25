@@ -159,6 +159,7 @@ LANGUAGES = {
         "password_reset_success": "密码重置成功",
         "reset_failed": "重置失败",
         "send_reset_code": "发送验证码",
+        "salt_required": "抱歉，因新版本安全更新，请您重置密码后重新登录",
         # Activation code
         "activate": "激活",
         "activation_code": "激活码",
@@ -282,6 +283,7 @@ LANGUAGES = {
         "password_reset_success": "Password reset successfully",
         "reset_failed": "Reset failed",
         "send_reset_code": "Send Code",
+        "salt_required": "Sorry, for security reasons please reset your password and login again",
         # Activation code
         "activate": "Activate",
         "activation_code": "Activation Code",
@@ -1221,8 +1223,12 @@ class FrpLoginApp:
             # Step 1: Request a persistent token
             resp = self.api.request_token(email, password)
             if resp.status_code != 200:
-                err = self._tr_error(resp.json().get("error", self._tr("login_failed")))
-                self.root.after(0, lambda: self._show_error("error", err))
+                body = resp.json()
+                err = body.get("error", self._tr("login_failed"))
+                if err == "SALT_REQUIRED":
+                    self.root.after(0, lambda: self._show_error("error", self._tr("salt_required")))
+                else:
+                    self.root.after(0, lambda: self._show_error("error", self._tr_error(err)))
                 return
             token = resp.json().get("token", "")
             # Step 2: Login with the token

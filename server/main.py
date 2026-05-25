@@ -308,6 +308,7 @@ class Database:
         for alter_sql in [
             "ALTER TABLE users ADD COLUMN token VARCHAR(255) DEFAULT NULL",
             "ALTER TABLE users ADD COLUMN token_expires_at DATETIME DEFAULT NULL",
+            "ALTER TABLE users ADD COLUMN salt VARCHAR(32) DEFAULT NULL",
         ]:
             try:
                 self._execute(alter_sql)
@@ -315,16 +316,16 @@ class Database:
                 pass
 
     # ---- User operations ----
-    def create_user(self, email, password_hash):
+    def create_user(self, email, password_hash, salt):
         # Check if email already registered
         existing = self._fetch_one("SELECT id FROM users WHERE email=%s", (email,))
         if existing:
             return None
         user_id = self._generate_user_id()
         self._execute(
-            "INSERT INTO users (user_id, email, password, verified, expires_at) "
-            "VALUES (%s, %s, %s, 1, %s)",
-            (user_id, email, password_hash, datetime.now() - timedelta(days=1)),
+            "INSERT INTO users (user_id, email, password, salt, verified, expires_at) "
+            "VALUES (%s, %s, %s, %s, 1, %s)",
+            (user_id, email, password_hash, salt, datetime.now() - timedelta(days=1)),
         )
         return user_id
 
@@ -411,11 +412,12 @@ class Database:
                 return False, "User ID already in use"
         else:
             user_id = self._generate_user_id()
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        salt = _generate_salt()
+        pw_hash = _hash_password(password, salt)
         self._execute(
-            "INSERT INTO users (user_id, email, password, verified, expires_at) "
-            "VALUES (%s, %s, %s, 1, %s)",
-            (user_id, email, pw_hash, expires_at),
+            "INSERT INTO users (user_id, email, password, salt, verified, expires_at) "
+            "VALUES (%s, %s, %s, %s, 1, %s)",
+            (user_id, email, pw_hash, salt, expires_at),
         )
         return True, user_id
 
@@ -435,8 +437,12 @@ class Database:
                 return False, "Email already in use by another user"
             self._execute("UPDATE users SET email=%s WHERE user_id=%s", (email, old_user_id))
         if password is not None:
-            pw_hash = hashlib.sha256(password.encode()).hexdigest()
-            self._execute("UPDATE users SET password=%s WHERE user_id=%s", (pw_hash, old_user_id))
+            salt = _generate_salt()
+            pw_hash = _hash_password(password, salt)
+            self._execute(
+                "UPDATE users SET password=%s, salt=%s WHERE user_id=%s",
+                (pw_hash, salt, old_user_id),
+            )
         if expires_at is not None:
             self._execute("UPDATE users SET expires_at=%s WHERE user_id=%s", (expires_at, old_user_id))
         return True, self.get_user_by_id(old_user_id)
@@ -632,6 +638,18 @@ class Database:
 # ============================================================
 def generate_token(length=32):
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+def _generate_salt():
+    """Generate a random 16-character hex salt."""
+    return hashlib.sha256(str(random.getrandbits(256)).encode()).hexdigest()[:16]
+
+
+def _hash_password(password, salt):
+    """Hash password with salt using SHA256."""
+    if not salt:
+        return hashlib.sha256(password.encode()).hexdigest()
+    return hashlib.sha256((salt + password).encode()).hexdigest()
 
 
 def parse_token_expiry(expiry_str):
@@ -939,8 +957,9 @@ def create_app(db, email_sender, token_mgr, cfg):
             # Code is valid - remove it so it can't be reused
             verification_codes.pop(email, None)
 
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
-        user_id = db.create_user(email, pw_hash)
+        salt = _generate_salt()
+        pw_hash = _hash_password(password, salt)
+        user_id = db.create_user(email, pw_hash, salt)
         if not user_id:
             return jsonify({"error": "Email already registered"}), 400
         token = create_session(user_id)
@@ -1003,13 +1022,14 @@ def create_app(db, email_sender, token_mgr, cfg):
                 verification_codes.pop(email, None)
                 return jsonify({"error": "Code expired"}), 400
             verification_codes.pop(email, None)
-        # Update password
-        pw_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        # Update password with new salt
         user = db.get_user_by_email(email)
         if not user:
             return jsonify({"error": "Email not registered"}), 404
+        salt = _generate_salt()
+        pw_hash = _hash_password(new_password, salt)
         db._execute(
-            "UPDATE users SET password=%s WHERE email=%s", (pw_hash, email)
+            "UPDATE users SET password=%s, salt=%s WHERE email=%s", (pw_hash, salt, email)
         )
         return jsonify({"status": "ok", "message": "Password reset successfully"})
 
@@ -1023,7 +1043,10 @@ def create_app(db, email_sender, token_mgr, cfg):
         user = db.get_user_by_email(email)
         if not user or not user["verified"]:
             return jsonify({"error": "Invalid email or password"}), 401
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        # Salt check: old users without salt must reset password
+        if not user.get("salt"):
+            return jsonify({"error": "SALT_REQUIRED"}), 403
+        pw_hash = _hash_password(password, user["salt"])
         if user["password"] != pw_hash:
             return jsonify({"error": "Invalid email or password"}), 401
         # Generate persistent token
