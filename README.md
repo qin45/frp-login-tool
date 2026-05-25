@@ -13,6 +13,8 @@ A multi-user FRP (Fast Reverse Proxy) intranet penetration management tool with 
 ## Features
 
 - **User Registration & Login** via email with SMTP verification code
+- **Token-based Authentication**: two-step login (request password → get persistent token → exchange for session token); persistent tokens can be stored for auto-login
+- **bcrypt Password Hashing**: all passwords hashed with bcrypt; legacy SHA256 hashes migrated on password reset
 - **Automatic User ID** assignment (`user0001`, `user0002`, ...)
 - **Tunnel Management**: each user can create up to 10 tunnels
 - **Automatic Port Allocation**: each tunnel gets a fixed port from a configurable range (default 20000-21000)
@@ -302,7 +304,7 @@ curl -X DELETE "http://localhost:8444/api/management/tunnel/1?key=your-secret-ke
 ## How It Works
 
 1. **Registration Flow**: User enters email → server sends verification code via SMTP → user verifies → account created with auto-generated ID.
-2. **Login Flow**: User logs in via email/password → receives session token → views account status and tunnels.
+2. **Login Flow**: User logs in via email/password → server generates a persistent token (stored in DB with configurable expiry) → client exchanges it for a 24h session token. If "remember me" is checked, the persistent token is encrypted with Windows DPAPI and saved locally for automatic re-authentication.
 3. **Tunnel Creation**: User creates a tunnel → server allocates a port from the configured range (default 20000-21000) → tunnel is stored in MySQL.
 4. **Tunnel Enable**: User enables a tunnel → server requests token from fp-multiuser API → client updates `frpc.ini` → client starts `frpc.exe` as subprocess.
 5. **Tunnel Disable**: User disables a tunnel → client sends SIGINT to `frpc.exe` → server marks tunnel as disabled.
@@ -311,8 +313,12 @@ curl -X DELETE "http://localhost:8444/api/management/tunnel/1?key=your-secret-ke
 ## Security
 
 - All client-server communication uses HTTPS
-- Passwords are hashed with SHA-256
-- Session tokens expire after 24 hours
+- Passwords are hashed with **bcrypt** (legacy SHA-256 hashes migrated on password reset)
+- **Token-based authentication**: two-step flow separates credential verification from session creation
+- Session tokens expire after 24 hours and are stored **in memory only** (never persisted to disk)
+- Persistent login tokens are encrypted with **Windows DPAPI** (bound to the current Windows user account)
+- Client config is automatically cleaned of legacy sensitive fields on startup
+- Server verifies database table structure on startup, auto-restoring missing columns
 - fp-multiuser API runs on localhost by default
 
 ## License
