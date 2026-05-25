@@ -837,7 +837,7 @@ class FrpLoginApp:
     # ============================
     # Login / Register Screen
     # ============================
-    def _show_login(self):
+    def _show_login(self, skip_auto=False):
         self._clear_container()
         self.login_frame = ttk.Frame(self.container, padding=30)
         self.login_frame.pack(fill=tk.BOTH, expand=True)
@@ -992,8 +992,8 @@ class FrpLoginApp:
         ttk.Label(self.login_frame, textvariable=self.status_var,
                   foreground="gray").pack(pady=5)
 
-        # Try auto-login with encrypted token
-        if TOKEN_FILE.exists() and self.api.base_url:
+        # Try auto-login with encrypted token (skip on explicit logout)
+        if not skip_auto and TOKEN_FILE.exists() and self.api.base_url:
             self._try_auto_login()
 
     def _check_server(self):
@@ -1820,7 +1820,7 @@ class FrpLoginApp:
         self.current_user_id = None
         self.current_user_info = None
         self.api.logout()
-        self._show_login()
+        self._show_login(skip_auto=True)
 
     # ============================
     # Run
