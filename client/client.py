@@ -15,6 +15,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
 import zipfile
+import ctypes
+from ctypes import wintypes
 
 import requests
 import urllib3
@@ -26,6 +28,7 @@ FRPC_DIR = BASE_DIR / "frpc"
 FRPC_INI = FRPC_DIR / "frpc.ini"
 FRPC_EXE = FRPC_DIR / "frpc.exe"
 CONFIG_FILE = BASE_DIR / "client_config.json"
+TOKEN_FILE = BASE_DIR / "token.dat"
 
 # frpc.exe is not bundled (avoids Windows Defender flagging it in PyInstaller temp cache).
 # _ensure_frpc_core() handles download on first use.
@@ -314,6 +317,60 @@ def load_client_config():
 def save_client_config(cfg):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=4, ensure_ascii=False)
+
+
+# ============================================================
+# Encrypted Token Storage (Windows DPAPI)
+# ============================================================
+CRYPTPROTECT_UI_FORBIDDEN = 0x01
+
+class _DATA_BLOB(ctypes.Structure):
+    _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+
+def _save_encrypted_token(token):
+    """Encrypt token with Windows DPAPI and save to token file."""
+    data = token.encode("utf-16-le")
+    data_len = len(data)
+    buffer = (ctypes.c_byte * data_len)(*data)
+    blob_in = _DATA_BLOB(data_len, buffer)
+    blob_out = _DATA_BLOB()
+    if not ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(blob_in), None, None, None, None,
+        CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(blob_out)
+    ):
+        raise ctypes.WinError()
+    try:
+        raw = ctypes.string_at(blob_out.pbData, blob_out.cbData)
+        TOKEN_FILE.write_bytes(raw)
+    finally:
+        ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+
+def _load_encrypted_token():
+    """Read and decrypt token from file using Windows DPAPI. Returns None on failure."""
+    if not TOKEN_FILE.exists():
+        return None
+    try:
+        raw = TOKEN_FILE.read_bytes()
+        data_len = len(raw)
+        buffer = (ctypes.c_byte * data_len)(*raw)
+        blob_in = _DATA_BLOB(data_len, buffer)
+        blob_out = _DATA_BLOB()
+        if not ctypes.windll.crypt32.CryptUnprotectData(
+            ctypes.byref(blob_in), None, None, None, None,
+            CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(blob_out)
+        ):
+            raise ctypes.WinError()
+        try:
+            return ctypes.string_at(blob_out.pbData, blob_out.cbData).decode("utf-16-le")
+        finally:
+            ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+    except Exception:
+        return None
+
+def _delete_encrypted_token():
+    """Remove the encrypted token file if it exists."""
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
 
 
 # ============================================================
@@ -933,9 +990,8 @@ class FrpLoginApp:
         ttk.Label(self.login_frame, textvariable=self.status_var,
                   foreground="gray").pack(pady=5)
 
-        # Try auto-login with saved token
-        cfg = load_client_config()
-        if cfg.get("saved_token") and self.api.base_url:
+        # Try auto-login with encrypted token
+        if TOKEN_FILE.exists() and self.api.base_url:
             self._try_auto_login()
 
     def _check_server(self):
@@ -988,12 +1044,13 @@ class FrpLoginApp:
                 return
         except requests.RequestException:
             pass
-        # If session expired but remember_pwd is on, auto-login with saved token
+        # If session expired but remember_pwd is on, auto-login with encrypted token
         cfg = load_client_config()
-        if cfg.get("remember_pwd") and cfg.get("saved_email") and cfg.get("saved_token"):
+        token = _load_encrypted_token()
+        if cfg.get("remember_pwd") and cfg.get("saved_email") and token:
             self.api.base_url = cfg.get("server_url", "")
             try:
-                resp = self.api.login(cfg["saved_email"], cfg["saved_token"])
+                resp = self.api.login(cfg["saved_email"], token)
                 if resp.status_code == 200:
                     data = resp.json()
                     self.current_user_id = data["user_id"]
@@ -1173,15 +1230,15 @@ class FrpLoginApp:
             if resp2.status_code == 200:
                 data = resp2.json()
                 self.current_user_id = data["user_id"]
-                # Save remember settings (token instead of password)
+                # Save remember settings (encrypted token instead of plaintext)
                 cfg = load_client_config()
                 cfg["remember_pwd"] = self.login_remember_var.get()
                 if self.login_remember_var.get():
                     cfg["saved_email"] = email
-                    cfg["saved_token"] = token
+                    _save_encrypted_token(token)
                 else:
                     cfg.pop("saved_email", None)
-                    cfg.pop("saved_token", None)
+                    _delete_encrypted_token()
                 save_client_config(cfg)
                 self.root.after(0, self._show_main)
             else:
