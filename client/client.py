@@ -7,7 +7,6 @@ Supports Chinese and English languages.
 import hashlib
 import io
 import json
-import shutil
 import signal
 import subprocess
 import sys
@@ -28,12 +27,8 @@ FRPC_INI = FRPC_DIR / "frpc.ini"
 FRPC_EXE = FRPC_DIR / "frpc.exe"
 CONFIG_FILE = BASE_DIR / "client_config.json"
 
-# When frozen, copy bundled frpc.exe from _MEIPASS to writable runtime location
-if getattr(sys, 'frozen', False):
-    bundled_frpc = Path(sys._MEIPASS) / "frpc" / "frpc.exe"
-    if bundled_frpc.exists() and not FRPC_EXE.exists():
-        FRPC_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(bundled_frpc), str(FRPC_EXE))
+# frpc.exe is not bundled (avoids Windows Defender flagging it in PyInstaller temp cache).
+# _ensure_frpc_core() handles download on first use.
 
 frpc_process = None
 frpc_process_lock = threading.Lock()
@@ -332,8 +327,6 @@ class ApiClient:
         self.cfg = load_client_config()
         if "server_url" in self.cfg:
             self.base_url = self.cfg["server_url"]
-        if "session_token" in self.cfg:
-            self.session_token = self.cfg["session_token"]
         if "disable_ssl_verify" in self.cfg:
             self._verify = not self.cfg["disable_ssl_verify"]
 
@@ -377,8 +370,6 @@ class ApiClient:
         if resp.status_code == 200:
             data = resp.json()
             self.session_token = data.get("session_token", "")
-            self.cfg["session_token"] = self.session_token
-            save_client_config(self.cfg)
         return resp
 
     def reset_send_code(self, email):
@@ -397,8 +388,6 @@ class ApiClient:
         if resp.status_code == 200:
             data = resp.json()
             self.session_token = data.get("session_token", "")
-            self.cfg["session_token"] = self.session_token
-            save_client_config(self.cfg)
         return resp
 
     def get_user_info(self):
@@ -439,8 +428,6 @@ class ApiClient:
 
     def logout(self):
         self.session_token = ""
-        self.cfg.pop("session_token", None)
-        save_client_config(self.cfg)
 
 
 # ============================================================
@@ -946,8 +933,9 @@ class FrpLoginApp:
         ttk.Label(self.login_frame, textvariable=self.status_var,
                   foreground="gray").pack(pady=5)
 
-        # Try auto-login
-        if self.api.session_token and self.api.base_url:
+        # Try auto-login with saved token
+        cfg = load_client_config()
+        if cfg.get("saved_token") and self.api.base_url:
             self._try_auto_login()
 
     def _check_server(self):
@@ -1583,6 +1571,17 @@ class FrpLoginApp:
             if int(vals[0]) != tunnel["id"] and vals[5] == tr_enabled:
                 self._show_error("error", self._tr("only_one_tunnel"))
                 return
+
+        # Ensure frpc core exists before proceeding
+        if not FRPC_EXE.exists():
+            want = messagebox.askyesno(
+                self._tr("missing_core_file"),
+                self._tr("missing_core_file_prompt"),
+            )
+            if not want:
+                return
+            threading.Thread(target=self._download_frpc_thread, daemon=True).start()
+            return
 
         threading.Thread(target=self._enable_thread,
                          args=(tunnel,), daemon=True).start()
