@@ -17,6 +17,7 @@ import smtplib
 import subprocess
 import signal
 import ssl
+import bcrypt
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -308,7 +309,6 @@ class Database:
         for alter_sql in [
             "ALTER TABLE users ADD COLUMN token VARCHAR(255) DEFAULT NULL",
             "ALTER TABLE users ADD COLUMN token_expires_at DATETIME DEFAULT NULL",
-            "ALTER TABLE users ADD COLUMN salt VARCHAR(32) DEFAULT NULL",
         ]:
             try:
                 self._execute(alter_sql)
@@ -316,16 +316,16 @@ class Database:
                 pass
 
     # ---- User operations ----
-    def create_user(self, email, password_hash, salt):
+    def create_user(self, email, password_hash):
         # Check if email already registered
         existing = self._fetch_one("SELECT id FROM users WHERE email=%s", (email,))
         if existing:
             return None
         user_id = self._generate_user_id()
         self._execute(
-            "INSERT INTO users (user_id, email, password, salt, verified, expires_at) "
-            "VALUES (%s, %s, %s, %s, 1, %s)",
-            (user_id, email, password_hash, salt, datetime.now() - timedelta(days=1)),
+            "INSERT INTO users (user_id, email, password, verified, expires_at) "
+            "VALUES (%s, %s, %s, 1, %s)",
+            (user_id, email, password_hash, datetime.now() - timedelta(days=1)),
         )
         return user_id
 
@@ -412,12 +412,11 @@ class Database:
                 return False, "User ID already in use"
         else:
             user_id = self._generate_user_id()
-        salt = _generate_salt()
-        pw_hash = _hash_password(password, salt)
+        pw_hash = _hash_password(password)
         self._execute(
-            "INSERT INTO users (user_id, email, password, salt, verified, expires_at) "
-            "VALUES (%s, %s, %s, %s, 1, %s)",
-            (user_id, email, pw_hash, salt, expires_at),
+            "INSERT INTO users (user_id, email, password, verified, expires_at) "
+            "VALUES (%s, %s, %s, 1, %s)",
+            (user_id, email, pw_hash, expires_at),
         )
         return True, user_id
 
@@ -437,11 +436,10 @@ class Database:
                 return False, "Email already in use by another user"
             self._execute("UPDATE users SET email=%s WHERE user_id=%s", (email, old_user_id))
         if password is not None:
-            salt = _generate_salt()
-            pw_hash = _hash_password(password, salt)
+            pw_hash = _hash_password(password)
             self._execute(
-                "UPDATE users SET password=%s, salt=%s WHERE user_id=%s",
-                (pw_hash, salt, old_user_id),
+                "UPDATE users SET password=%s WHERE user_id=%s",
+                (pw_hash, old_user_id),
             )
         if expires_at is not None:
             self._execute("UPDATE users SET expires_at=%s WHERE user_id=%s", (expires_at, old_user_id))
@@ -640,16 +638,9 @@ def generate_token(length=32):
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-def _generate_salt():
-    """Generate a random 16-character hex salt."""
-    return hashlib.sha256(str(random.getrandbits(256)).encode()).hexdigest()[:16]
-
-
-def _hash_password(password, salt):
-    """Hash password with salt using SHA256."""
-    if not salt:
-        return hashlib.sha256(password.encode()).hexdigest()
-    return hashlib.sha256((salt + password).encode()).hexdigest()
+def _hash_password(password):
+    """Hash password with bcrypt (salt built-in)."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def parse_token_expiry(expiry_str):
@@ -957,9 +948,8 @@ def create_app(db, email_sender, token_mgr, cfg):
             # Code is valid - remove it so it can't be reused
             verification_codes.pop(email, None)
 
-        salt = _generate_salt()
-        pw_hash = _hash_password(password, salt)
-        user_id = db.create_user(email, pw_hash, salt)
+        pw_hash = _hash_password(password)
+        user_id = db.create_user(email, pw_hash)
         if not user_id:
             return jsonify({"error": "Email already registered"}), 400
         token = create_session(user_id)
@@ -1022,14 +1012,13 @@ def create_app(db, email_sender, token_mgr, cfg):
                 verification_codes.pop(email, None)
                 return jsonify({"error": "Code expired"}), 400
             verification_codes.pop(email, None)
-        # Update password with new salt
+        # Update password with bcrypt hash
         user = db.get_user_by_email(email)
         if not user:
             return jsonify({"error": "Email not registered"}), 404
-        salt = _generate_salt()
-        pw_hash = _hash_password(new_password, salt)
+        pw_hash = _hash_password(new_password)
         db._execute(
-            "UPDATE users SET password=%s, salt=%s WHERE email=%s", (pw_hash, salt, email)
+            "UPDATE users SET password=%s WHERE email=%s", (pw_hash, email)
         )
         return jsonify({"status": "ok", "message": "Password reset successfully"})
 
@@ -1043,12 +1032,16 @@ def create_app(db, email_sender, token_mgr, cfg):
         user = db.get_user_by_email(email)
         if not user or not user["verified"]:
             return jsonify({"error": "Invalid email or password"}), 401
-        # Salt check: old users without salt must reset password
-        if not user.get("salt"):
+        # Verify password — try bcrypt first, fallback to SHA256 for old hashes
+        try:
+            if not bcrypt.checkpw(password.encode(), user["password"].encode()):
+                return jsonify({"error": "Invalid email or password"}), 401
+        except ValueError:
+            # Old SHA256 hash — check directly and prompt reset
+            if hashlib.sha256(password.encode()).hexdigest() != user["password"]:
+                return jsonify({"error": "Invalid email or password"}), 401
+            # Old hash is valid but needs migration — force password reset
             return jsonify({"error": "SALT_REQUIRED"}), 403
-        pw_hash = _hash_password(password, user["salt"])
-        if user["password"] != pw_hash:
-            return jsonify({"error": "Invalid email or password"}), 401
         # Generate persistent token
         token = generate_token(32)
         expiry_delta = parse_token_expiry(cfg.get("auth", {}).get("token_expiry", "014-00"))
