@@ -113,9 +113,6 @@ def migrate_config(cfg):
             "api_key": "",
             "allowed_ips": ["127.0.0.1"],
         },
-        "auth": {
-            "token_expiry": "014-00",
-        },
     }
 
     added = []
@@ -303,16 +300,6 @@ class Database:
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
         self._execute(sql3)
-
-        # Add token columns (safe migration, ignored if already exist)
-        for alter_sql in [
-            "ALTER TABLE users ADD COLUMN token VARCHAR(255) DEFAULT NULL",
-            "ALTER TABLE users ADD COLUMN token_expires_at DATETIME DEFAULT NULL",
-        ]:
-            try:
-                self._execute(alter_sql)
-            except pymysql.err.OperationalError:
-                pass
 
     # ---- User operations ----
     def create_user(self, email, password_hash):
@@ -632,17 +619,6 @@ class Database:
 # ============================================================
 def generate_token(length=32):
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
-
-
-def parse_token_expiry(expiry_str):
-    """Parse DDD-HH format string into a timedelta. Defaults to 14 days."""
-    try:
-        parts = expiry_str.split("-")
-        days = int(parts[0])
-        hours = int(parts[1]) if len(parts) > 1 else 0
-        return timedelta(days=days, hours=hours)
-    except (ValueError, IndexError):
-        return timedelta(days=14)
 
 
 def create_session(user_id):
@@ -1013,8 +989,8 @@ def create_app(db, email_sender, token_mgr, cfg):
         )
         return jsonify({"status": "ok", "message": "Password reset successfully"})
 
-    @app.route("/api/auth/request-token", methods=["POST"])
-    def request_token():
+    @app.route("/api/auth/login", methods=["POST"])
+    def login():
         data = request.get_json()
         if not data:
             return jsonify({"error": "Request body required"}), 400
@@ -1026,34 +1002,9 @@ def create_app(db, email_sender, token_mgr, cfg):
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
         if user["password"] != pw_hash:
             return jsonify({"error": "Invalid email or password"}), 401
-        # Generate persistent token
-        token = generate_token(32)
-        expiry_delta = parse_token_expiry(cfg.get("auth", {}).get("token_expiry", "014-00"))
-        expires_at = datetime.now() + expiry_delta
-        db._execute(
-            "UPDATE users SET token=%s, token_expires_at=%s WHERE email=%s",
-            (token, expires_at, email),
-        )
-        return jsonify({"status": "ok", "token": token})
-
-    @app.route("/api/auth/login", methods=["POST"])
-    def login():
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body required"}), 400
-        email = data.get("email", "").strip().lower()
-        token = data.get("token", "").strip()
-        user = db.get_user_by_email(email)
-        if not user or not user["verified"]:
-            return jsonify({"error": "Invalid email or password"}), 401
-        # Validate persistent token
-        if not user.get("token") or user.get("token") != token:
-            return jsonify({"error": "Invalid email or password"}), 401
-        if not user.get("token_expires_at") or user["token_expires_at"] < datetime.now():
-            return jsonify({"error": "Token expired"}), 401
-        session_token = create_session(user["user_id"])
+        token = create_session(user["user_id"])
         return jsonify({
-            "status": "ok", "session_token": session_token, "user_id": user["user_id"],
+            "status": "ok", "session_token": token, "user_id": user["user_id"],
             "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None,
         })
 

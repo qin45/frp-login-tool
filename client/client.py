@@ -389,11 +389,8 @@ class ApiClient:
             "email": email, "code": code, "new_password": new_password,
         })
 
-    def request_token(self, email, password):
-        return self._post("/api/auth/request-token", {"email": email, "password": password})
-
-    def login(self, email, token):
-        resp = self._post("/api/auth/login", {"email": email, "token": token})
+    def login(self, email, password):
+        resp = self._post("/api/auth/login", {"email": email, "password": password})
         if resp.status_code == 200:
             data = resp.json()
             self.session_token = data.get("session_token", "")
@@ -853,7 +850,8 @@ class FrpLoginApp:
         ttk.Label(login_tab, text=self._tr("password")).grid(
             row=1, column=0, sticky=tk.W, pady=5
         )
-        self.login_pass_var = tk.StringVar(value="")
+        saved_password = cfg.get("saved_password", "") if cfg.get("remember_pwd") else ""
+        self.login_pass_var = tk.StringVar(value=saved_password)
         ttk.Entry(login_tab, textvariable=self.login_pass_var, show="*",
                   width=35).grid(row=1, column=1, pady=5)
         # Remember password checkbox
@@ -1000,21 +998,15 @@ class FrpLoginApp:
                 return
         except requests.RequestException:
             pass
-        # If session expired but remember_pwd is on, auto-login with saved token
+        # If session expired but remember_pwd is on, auto-login
         cfg = load_client_config()
-        if cfg.get("remember_pwd") and cfg.get("saved_email") and cfg.get("saved_token"):
+        if cfg.get("remember_pwd") and cfg.get("saved_email") and cfg.get("saved_password"):
             self.api.base_url = cfg.get("server_url", "")
-            try:
-                resp = self.api.login(cfg["saved_email"], cfg["saved_token"])
-                if resp.status_code == 200:
-                    data = resp.json()
-                    self.current_user_id = data["user_id"]
-                    self.current_user_info = data
-                    self.root.after(0, self._show_main)
-                    return
-                # Token expired or invalid — fall through to show login screen
-            except requests.RequestException:
-                pass
+            self.root.after(0, lambda: [
+                self.login_email_var.set(cfg["saved_email"]),
+                self.login_pass_var.set(cfg["saved_password"]),
+            ])
+            self._login()
 
     def _show_error(self, title_key, message):
         """Show error messagebox with translated title."""
@@ -1173,31 +1165,23 @@ class FrpLoginApp:
 
     def _login_thread(self, email, password):
         try:
-            # Step 1: Request a persistent token
-            resp = self.api.request_token(email, password)
-            if resp.status_code != 200:
-                err = self._tr_error(resp.json().get("error", self._tr("login_failed")))
-                self.root.after(0, lambda: self._show_error("error", err))
-                return
-            token = resp.json().get("token", "")
-            # Step 2: Login with the token
-            resp2 = self.api.login(email, token)
-            if resp2.status_code == 200:
-                data = resp2.json()
+            resp = self.api.login(email, password)
+            if resp.status_code == 200:
+                data = resp.json()
                 self.current_user_id = data["user_id"]
-                # Save remember settings (token instead of password)
+                # Save remember password settings
                 cfg = load_client_config()
                 cfg["remember_pwd"] = self.login_remember_var.get()
                 if self.login_remember_var.get():
                     cfg["saved_email"] = email
-                    cfg["saved_token"] = token
+                    cfg["saved_password"] = password
                 else:
                     cfg.pop("saved_email", None)
-                    cfg.pop("saved_token", None)
+                    cfg.pop("saved_password", None)
                 save_client_config(cfg)
                 self.root.after(0, self._show_main)
             else:
-                err = self._tr_error(resp2.json().get("error", self._tr("login_failed")))
+                err = self._tr_error(resp.json().get("error", self._tr("login_failed")))
                 self.root.after(0, lambda: self._show_error("error", err))
         except requests.RequestException as e:
             self.root.after(0, lambda e=e: self._show_error("error", str(e)))
