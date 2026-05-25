@@ -309,10 +309,24 @@ LANGUAGES = {
 # ============================================================
 # Client Config
 # ============================================================
+_LEGACY_KEYS = {"saved_password", "saved_token", "session_token"}
+
+def _cleanup_legacy_config(cfg):
+    """Remove legacy keys that should no longer be in the config file."""
+    changed = False
+    for key in _LEGACY_KEYS:
+        if key in cfg:
+            del cfg[key]
+            changed = True
+    if changed:
+        save_client_config(cfg)
+
 def load_client_config():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            cfg = json.load(f)
+        _cleanup_legacy_config(cfg)
+        return cfg
     return {}
 
 
